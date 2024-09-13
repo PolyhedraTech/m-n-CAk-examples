@@ -1,0 +1,15 @@
+file title : Mapa de Humitat
+data type : integer
+file type : ascii
+columns : 100
+rows : 100
+ref.system : plane
+ref.units : m
+unit dist. : 1
+min. value : 0
+max. value : 29
+Value units : unspecified
+Value Error : unknown
+flag Value : none
+flag def 'n : none
+legend cats : 0
