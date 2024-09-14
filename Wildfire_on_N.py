@@ -83,151 +83,48 @@ def update(frame):
 #Evolution function, propagation of the wildfire.
 
 def Evolution_function(state, vegetation, humidity):
-
-
-
     new_state = state.copy()
-
-
-
-    #aixo va fora de la funció d'evolució.
-
-
     for i in range(state.shape[0]):
-
-
         for j in range(state.shape[1]):
-
-
-
             #3Això FORMA PART de la funció d'evolució
-
-
             if state[i, j] == BURNING:  # Si la cel·la està burning
-
-
                 if vegetation[i,j] == 0:
-
-
                     new_state[i, j] = BURNED
-
-
                 else:
-
-
                     vegetation[i,j] -= 1
-
-
-
                     if i > 0 and state[i-1,j] == UNBURNED:
-
-
-
                         if humidity[i-1, j] > 0:
-
-
-
                             humidity[i-1, j] -= 1
-
-
-
                         elif vegetation[i-1,j] > 0:
-
-
-
                             new_state[i-1, j] = BURNING 
-                            
-                    
-
-
-
                     if i < state.shape[0] - 1 and state[i+1, j] == UNBURNED:
-
-
-
                         if humidity[i+1, j] > 0:
-
-
-
                             humidity[i+1, j] -= 1
-
-
-
                         elif vegetation[i+1,j] > 0:
-
-
-
                             new_state[i+1, j] = BURNING 
-                        
-
-
-
-
                     if j > 0 and state[i, j-1] == UNBURNED:
-
-
-
                         if humidity[i, j-1] > 0:
-
-
-
                             humidity[i, j-1] -= 1
-
-
-
                         elif vegetation[i,j-1] > 0:
-
-
-
                             new_state[i, j-1] = BURNING 
-                        
-               
-
-
-
                     if j < state.shape[1] - 1 and state[i, j+1] == UNBURNED:
-
-
-
                         if humidity[i, j+1] > 0:
-
-
-
                             humidity[i, j+1] -= 1
-
-
-
                         elif vegetation[i,j+1] > 0:    
-
-
-
                             new_state[i, j+1] = BURNING
-                        
-
- 
-
-
 
     return new_state, vegetation, humidity
 
 
 #Vicinity function in N^2 Moore neighbourhood.
-
 def get_vc(point, max_dim):
-
     vc= []
-
     i, j = point
-
     max_i, max_j = max_dim
 
-
     if i > 0: vc.append([i-1,j])
-
     if i < max_i - 1: vc.append([i+1, j])
-
     if j > 0:  vc.append([i, j-1])
-
     if j < max_j - 1: vc.append([i, j+1])
 
     return vc
