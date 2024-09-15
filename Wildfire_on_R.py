@@ -49,28 +49,6 @@ def read_idrisi_vector_file(file_path):
             polygons.append({'id': polygon_id, 'points': points})
     return polygons
 
-def reshape(data, shape):
-
-
-
-    """
-
-
-
-    Convierteix el vector columna en una matriu
-
-
-
-    """
-
-
-    return data.reshape(shape)
-
-def update(frame):
-    im.set_array(np.flipud(fireEvolution[frame]))
-    ax.set_title(f'Step {frame}')
-    return im, ax
-
 def plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
     ax.clear()
     
@@ -133,7 +111,7 @@ def animateLayers(layersArray, interval=500, radius=1, color='green', title='No 
     ani = animation.FuncAnimation(fig, animate, init_func=init, frames=len(layersArray), interval=interval, blit=False, repeat=True)
     plt.show()
 
-def resultsWindow():
+def resultsWindow2():
     root = tk.Tk()
     root.title("Select Action")
 
@@ -150,6 +128,68 @@ def resultsWindow():
     button3.pack(side=tk.LEFT, padx=10)
 
     root.mainloop()
+
+def resultsWindow(fireEvolution, vegetationEvolution, humidityEvolution):
+    root = tk.Tk()
+    root.title("Select Action")
+    fig, ax = plt.subplots()
+    canvas = FigureCanvasTkAgg(fig, master=root)
+    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+ 
+    # Slider for selecting the matrix
+    def on_slider_change(val, layerEvolution):
+        frame = int(float(val))
+        plotRaster(ax, layerEvolution[frame], id=0, color='red', title=f'State at Frame {frame}')
+        canvas.draw()
+
+    # Label to display the current value of the slider
+    slider_label = tk.Label(root, text="Steep")
+    slider_label.pack(side=tk.BOTTOM, pady=5)
+
+    # Slider for selecting the matrix
+    slider = ttk.Scale(root, from_=0, to=len(fireEvolution) - 1, orient=tk.HORIZONTAL, command=lambda val: on_slider_change(val, fireEvolution))
+    slider.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
+     
+    button_frame = ttk.Frame(root)
+    button_frame.pack(pady=20)
+
+    # Buttons to change the layerEvolution
+    def set_fire_evolution():
+        slider.config(command=lambda val: on_slider_change(val, fireEvolution))
+        slider_label.config(text="Fire")
+        plotRaster(ax, fireEvolution[0], id=0, color='red', title='Fire - Initial State')
+        slider.set(0)  # Reset slider to the beginning
+        canvas.draw()
+
+    def set_vegetation_evolution():
+        slider.config(command=lambda val: on_slider_change(val, vegetationEvolution))
+        slider_label.config(text="Vegetation")
+        plotRaster(ax, vegetationEvolution[0], id=0, color='green', title='Vegetation - Initial State')
+        slider.set(0)  # Reset slider to the beginning
+        canvas.draw()
+        
+    def set_humidity_evolution():
+        slider.config(command=lambda val: on_slider_change(val, humidityEvolution))
+        slider_label.config(text="Humidity")
+        plotRaster(ax, humidityEvolution[0], id=0, color='blue', title='Humidity - Initial State')
+        slider.set(0)  # Reset slider to the beginning
+        canvas.draw()
+
+    # Variable to keep track of the selected option
+    selected_option = tk.StringVar(value="Fire")
+
+ # Radio buttons to select the layerEvolution
+    radio_fire = ttk.Radiobutton(button_frame, text="Fire", variable=selected_option, value="Fire", command=set_fire_evolution)
+    radio_fire.pack(side=tk.LEFT, padx=10)
+
+    radio_vegetation = ttk.Radiobutton(button_frame, text="Vegetation", variable=selected_option, value="Vegetation", command=set_vegetation_evolution)
+    radio_vegetation.pack(side=tk.LEFT, padx=10)
+
+    radio_humidity = ttk.Radiobutton(button_frame, text="Humidity", variable=selected_option, value="Humidity", command=set_humidity_evolution)
+    radio_humidity.pack(side=tk.LEFT, padx=10)
+
+    root.mainloop()
+
 
 def is_point_in_polygon(point, polygon_points):
     """
@@ -416,7 +456,7 @@ def combination_function(point):
 
 #Evolution function, propagation of the wildfire.
 
-def Evolution_function3(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity):
+def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity):
     new_LP = []
     nc = []
     vc = []
@@ -477,7 +517,7 @@ def Evolution_function3(point,fire, vegetation, humidity, new_state, new_vegetat
 
     return new_LP,new_state, new_vegetation, new_humidity
 
-if __name__ == "__main__":
+def eventScheduling_on_R():
     folder_path = './'
     # Auxiliary functions to obtain the information of the layers from files (IDRISI 32 format).
     #defining the size for the layers, the same for all to simplify
@@ -492,11 +532,6 @@ if __name__ == "__main__":
     create_idrisi_raster(polygonsVegetation,'vegetation_map2')
     create_idrisi_raster(polygonsHumidity,'humidity_map2')
 
-    # Definition of the function E, the states for the layer fire. For layers vegetation and humidity
-    # the interpretation is the identity function.
-    UNBURNED = 0
-    BURNING = 1
-    BURNED = 2
     
     # Reading the wildfire starting point
     fileFire = 'fire.vec'
@@ -533,7 +568,7 @@ if __name__ == "__main__":
         new_humidity=humidityEvolution[-1].copy()
 
         for point in LP:
-            LP_new, new_state, new_vegetation, new_humidity = Evolution_function3(point,fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity)
+            LP_new, new_state, new_vegetation, new_humidity = Evolution_function_on_R(point,fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity)
             [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
 
         LP = []
@@ -544,5 +579,21 @@ if __name__ == "__main__":
         vegetationEvolution.append(new_vegetation)
         humidityEvolution.append(new_humidity)
 
+    return fireEvolution, vegetationEvolution, humidityEvolution
 
-    resultsWindow()
+if __name__ == "__main__":
+    # Definition of the function E, the states for the layer fire. For layers vegetation and humidity
+    # the interpretation is the identity function.
+    UNBURNED = 0
+    BURNING = 1
+    BURNED = 2
+    
+    fireEvolution = []
+    vegetationEvolution = []
+    humidityEvolution = []
+
+    fireEvolution, vegetationEvolution, humidityEvolution = eventScheduling_on_R()
+
+    #resultsWindow(fireEvolution, vegetationEvolution, humidityEvolution)
+    
+    resultsWindow2()
