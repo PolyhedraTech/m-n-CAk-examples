@@ -49,7 +49,10 @@ def read_idrisi_doc_file(doc_path):
 
 def read_idrisi_raster_file(img_path):
     """
-    Reads an image file (IDRISI) and converts its contents to a NumPy array of integers.
+    Reads an IDRISI raster image file and converts its contents to a NumPy array of integers.
+    The IDRISI raster file is expected to be in ASCII format, where each line represents a row of the image,
+    and each value in the line represents a pixel value.
+    img_path (str): The path to the IDRISI raster image file.
 
     Parameters:
     img_path (str): The path to the image file.
@@ -61,6 +64,21 @@ def read_idrisi_raster_file(img_path):
     return data
 
 def read_idrisi_vector_file(file_path):
+    """
+    Reads an IDRISI vector file and extracts polygon data.
+    The function reads a file containing polygon data in the IDRISI vector format.
+    Each polygon is defined by an ID, a number of points, and the coordinates of those points.
+    The file is expected to have the following structure:
+    - Each polygon starts with a line containing the polygon ID and the number of points.
+    - The subsequent lines contain the coordinates of the points (x, y).
+    - Each polygon ends with a line containing "0 0".
+    Args:
+        file_path (str): The path to the IDRISI vector file.
+    Returns:
+        list: A list of dictionaries, each representing a polygon with the following keys:
+            - 'id' (int): The polygon ID.
+            - 'points' (list of tuples): A list of (x, y) tuples representing the points of the polygon.
+    """
     polygons = []
     with open(file_path, 'r') as file:
         lines = file.readlines()
@@ -87,41 +105,6 @@ def read_idrisi_vector_file(file_path):
     return polygons
 
 # Functions to plot the data
-def DEL_plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
-    ax.clear()
-    
-    for polygon in polygons:
-        polygon_id = polygon['id']
-        points = polygon['points']
-        
-        # Plot each point with a circle
-        for (x, y) in points:
-            circle = plt.Circle((x, y), radius, color='blue', fill=False)
-            ax.add_patch(circle)
-            ax.plot(x, y, 'ro')  # Plot the point
-        
-        # Plot the polygon with green fill
-        polygon_shape = plt.Polygon(points, closed=True, edgecolor=color, facecolor=color, fill=True)
-        ax.add_patch(polygon_shape)
-        
-        # Plot the edges of the polygon
-        for i in range(len(points)):
-            x1, y1 = points[i]
-            x2, y2 = points[(i + 1) % len(points)]  # Connect to the next point, wrapping around
-            ax.plot([x1, x2], [y1, y2], color='black')  # Draw the edge
-        
-
-        # Annotate the polygon with its ID
-        centroid_x = sum(x for x, y in points) / len(points)
-        centroid_y = sum(y for x, y in points) / len(points)
-        ax.text(centroid_x, centroid_y, str(polygon_id), fontsize=12, ha='center', va='center', color='black')
-    
-    ax.set_aspect('equal', adjustable='box')
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
-    plt.title(f'Layer {id} - '+title)
-    plt.grid(True)
-
 def plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
     ax.clear()
     
@@ -161,6 +144,55 @@ def plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
     plt.title(f'Layer {id} - '+title)
     plt.grid(True)
 
+def DEL_plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
+    ax.clear()
+    
+    # Calculate the area of each polygon and sort them by area in ascending order
+    polygons = sorted(polygons, key=lambda p: np.abs(np.sum([x0*y1 - x1*y0 for (x0, y0), (x1, y1) in zip(p['points'], p['points'][1:] + [p['points'][0]])])) / 2)
+    
+    for polygon in polygons:
+        polygon_id = polygon['id']
+        points = polygon['points']
+        
+        # Set the fill color based on the polygon ID
+        if polygon_id == 0:
+            fill_color = 'black'
+        elif polygon_id == 1:
+            fill_color = 'red'
+        elif polygon_id == 2:
+            fill_color = 'green'
+        else:
+            fill_color = 'blue'
+        
+        # Plot the polygon with the specified fill color and black edges
+        polygon_shape = plt.Polygon(points, closed=True, edgecolor='black', facecolor=fill_color, fill=True)
+        ax.add_patch(polygon_shape)
+        
+        # Plot the edges of the polygon
+        for j in range(len(points)):
+            x1, y1 = points[j]
+            x2, y2 = points[(j + 1) % len(points)]  # Connect to the next point, wrapping around
+            ax.plot([x1, x2], [y1, y2], color='black')  # Draw the edge
+        
+        # Annotate the polygon with its ID
+        centroid_x = sum(x for x, y in points) / len(points)
+        centroid_y = sum(y for x, y in points) / len(points)
+        ax.text(centroid_x, centroid_y, str(polygon_id), fontsize=12, ha='center', va='center', color='black')
+    
+    # Plot each point with a circle on top of everything
+    for polygon in polygons:
+        points = polygon['points']
+        for (x, y) in points:
+            circle = plt.Circle((x, y), radius, color='blue', fill=False)
+            ax.add_patch(circle)
+            ax.plot(x, y, 'ro')  # Plot the point
+    
+    ax.set_aspect('equal', adjustable='box')
+    plt.xlabel('X Coordinate')
+    plt.ylabel('Y Coordinate')
+    plt.title(f'Layer {id} - '+title)
+    plt.grid(True)
+
 def plotRaster(ax, matrix, id, color='green', title='No title'):
     """
     Plots a matrix using matplotlib on a given axis.
@@ -173,11 +205,18 @@ def plotRaster(ax, matrix, id, color='green', title='No title'):
         title (str): The title of the plot.
     """
     ax.clear()  # Clear the axis to prepare for the new frame
-    cax = ax.imshow(matrix, cmap='viridis', interpolation='nearest')
+  
+    # Define the color scale
+    cmap = plt.cm.colors.ListedColormap(['black', 'red', 'green', 'blue'])
+    bounds = [0, 1, 2, 3, 4]
+    norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
+  
+    #cax = ax.imshow(matrix, cmap='viridis', interpolation='nearest')
+    cax = ax.imshow(matrix, cmap=cmap, norm=norm,  interpolation='nearest')
     
     # Highlight the cells with the given ID
-    highlight = np.where(matrix == id)
-    ax.scatter(highlight[1], highlight[0], color=color, label=f'ID {id}', edgecolor='black')
+    #highlight = np.where(matrix == id)
+    #ax.scatter(highlight[1], highlight[0], color=color, label=f'ID {id}', edgecolor='black')
     
     # Add a colorbar
     #plt.colorbar(cax, ax=ax, label='Value')
@@ -1127,9 +1166,9 @@ def combination_function(point):
 
 if __name__ == "__main__":
 
-    domain = 'R'
+    domain = 'Z'
 
-    #domain = input(".git\nPlease, select the domain to work on (Z or R): ")
+    domain = input(".git\nPlease, select the domain to work on (Z or R): ")
 
     '''.git\if len(sys.argv) > 1:
         domain = sys.argv[1]

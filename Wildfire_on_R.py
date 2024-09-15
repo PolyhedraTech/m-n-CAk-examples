@@ -24,6 +24,21 @@ from shapely.ops import unary_union
 ##############################################################
 
 def read_idrisi_vector_file(file_path):
+    """
+    Reads an IDRISI vector file and extracts polygon data.
+    The function reads a file containing polygon data in the IDRISI vector format.
+    Each polygon is defined by an ID, a number of points, and the coordinates of those points.
+    The file is expected to have the following structure:
+    - Each polygon starts with a line containing the polygon ID and the number of points.
+    - The subsequent lines contain the coordinates of the points (x, y).
+    - Each polygon ends with a line containing "0 0".
+    Args:
+        file_path (str): The path to the IDRISI vector file.
+    Returns:
+        list: A list of dictionaries, each representing a polygon with the following keys:
+            - 'id' (int): The polygon ID.
+            - 'points' (list of tuples): A list of (x, y) tuples representing the points of the polygon.
+    """
     polygons = []
     with open(file_path, 'r') as file:
         lines = file.readlines()
