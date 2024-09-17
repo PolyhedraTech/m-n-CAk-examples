@@ -306,43 +306,6 @@ def resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
     root.mainloop()
 
 #Not used but useful for debugging
-def DEL_animateLayers(fig, ax, raster, layersArray, interval=500, radius=1, color='green', title='No title'):
-    #fig, ax = plt.subplots()
-    ax.set_aspect('equal', adjustable='box')
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
-    plt.title(title)
-    plt.grid(True)
-
-    def init():
-        ax.clear()
-        ax.set_aspect('equal', adjustable='box')
-        plt.xlabel('X Coordinate')
-        plt.ylabel('Y Coordinate')
-        plt.title(title)
-        plt.grid(True)
-        return []
-
-    def animate(i):
-        ax.clear()
-        ax.set_aspect('equal', adjustable='box')
-        plt.xlabel('X Coordinate')
-        plt.ylabel('Y Coordinate')
-        plt.title(f'Layer {i + 1}'+title)
-        plt.grid(True)
-        
-        # Get the current layer
-        layer = layersArray[i % len(layersArray)]
-        # Plot all polygons in the current layer
-        if raster==True:
-            plotRaster(ax, layer, i, color=color, title=title)
-        else:
-            plotVectorial(ax, layer, i, radius=radius, color=color, title=title)
-        return []
-
-    ani = animation.FuncAnimation(fig, animate, init_func=init, frames=len(layersArray), interval=interval, blit=False, repeat=True)
-    plt.show()
-
 def animateLayers(layersArray, interval=500, radius=1, color='green', title='No title'):
     fig, ax = plt.subplots()
     ax.set_aspect('equal', adjustable='box')
@@ -380,40 +343,6 @@ def animateLayers(layersArray, interval=500, radius=1, color='green', title='No 
 ##############################################################
 #m:n-CAk on Z specific functions
 ##############################################################
-
-def Naif_Evolution_function_on_Z(state, vegetation, humidity):
-    new_state = state.copy()
-    for i in range(state.shape[0]):
-        for j in range(state.shape[1]):
-            #This is what must be part of the evolution function.
-            if state[i, j] == BURNING:  # Si la cel·la està burning
-                if vegetation[i,j] == 0:
-                    new_state[i, j] = BURNED
-                else:
-                    vegetation[i,j] -= 1
-                    if i > 0 and state[i-1,j] == UNBURNED:
-                        if humidity[i-1, j] > 0:
-                            humidity[i-1, j] -= 1
-                        elif vegetation[i-1,j] > 0:
-                            new_state[i-1, j] = BURNING 
-                    if i < state.shape[0] - 1 and state[i+1, j] == UNBURNED:
-                        if humidity[i+1, j] > 0:
-                            humidity[i+1, j] -= 1
-                        elif vegetation[i+1,j] > 0:
-                            new_state[i+1, j] = BURNING 
-                    if j > 0 and state[i, j-1] == UNBURNED:
-                        if humidity[i, j-1] > 0:
-                            humidity[i, j-1] -= 1
-                        elif vegetation[i,j-1] > 0:
-                            new_state[i, j-1] = BURNING 
-                    if j < state.shape[1] - 1 and state[i, j+1] == UNBURNED:
-                        if humidity[i, j+1] > 0:
-                            humidity[i, j+1] -= 1
-                        elif vegetation[i,j+1] > 0:    
-                            new_state[i, j+1] = BURNING
-
-    return new_state, vegetation, humidity
-
 def Evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_vegetation, new_humidity):
     """
     Simulates the evolution of a wildfire in a m:n-CAk cellular automaton model.
@@ -539,27 +468,6 @@ def eventScheduling_on_Z():
 ##############################################################
 
 # Functions to work with vectorial maps
-def DEL_is_point_in_polygon(point, polygon_points):
-    """
-    Determine if a given point is inside a polygon defined by a list of points.
-    Args:
-        point (tuple): A tuple representing the coordinates of the point (x, y).
-        polygon_points (list): A list of tuples where each tuple represents the coordinates of a vertex of the polygon.
-    Returns:
-        bool: True if the point is inside the polygon or on its boundary, False otherwise.
-    Special Cases:
-        - If `polygon_points` contains only one point, the function checks if the given point is the same as that single point.
-    """
-    # Handle the special case where polygon_points is a single point
-    if len(polygon_points) == 1:
-        return point == polygon_points[0]
-    
-    # Create a polygon from the list of points
-    polygon = Polygon(polygon_points)
-    
-    # Check if the polygon contains the point
-    return polygon.intersects(Point(point))
-
 def is_point_in_polygon(point, polygon_points):
     """
     Determine if a given point is inside a polygon defined by a list of points.
@@ -625,33 +533,6 @@ def find_polygon_id(point, polygons):
                 smallest_polygon_id = polygon['id']
     
     return smallest_polygon_id
-
-def DEL_addVectorialMap(vectorialMap, layersArray):
-    """
-    Adds a vectorial map to the layers array, ensuring no duplicate points.
-    This function checks if the given vectorial map is a single point. If so, it searches for and removes any existing 
-    identical point in the layers array. After that, it adds the vectorial map to the layers array if it is not already present.
-    Args:
-        vectorialMap (list): A list containing a single dictionary with a 'points' key, which is a list of points.
-        layersArray (list): A list of vectorial maps, where each vectorial map is a list containing a dictionary with a 'points' key.
-    Returns:
-        None
-    """
-    # Verificar si vectorialMap es un punto
-    if len(vectorialMap['points']) == 1:
-        point_to_add = vectorialMap['points']
-        
-        # Buscar y eliminar el punto en layersArray si existe
-        for layer in layersArray:
-            if len(layer['points']) == 1:
-                existing_point = layer['points']
-                if existing_point == point_to_add:
-                    layersArray.remove(layer)
-                    break
-    
-    # Añadir el vectorialMap a layersArray
-    if vectorialMap not in layersArray:
-        layersArray.append(vectorialMap)
 
 def addVectorialMap(vectorialMap, layersArray):
     """
@@ -860,67 +741,6 @@ def create_idrisi_raster(polygons, output_filename):
         metadata_file.write(f"flag def'n  : none\n")
 
 #m:n-CAk on R functions
-def DEL_Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity):
-    new_LP = []
-    nc = []
-    vc = []
-    max_dim = [100,100]
-
-    #Getting the nucleous.
-    nc = get_nc(point)
-    i, j = point
-
-    if i == 70 and j == 70:
-        a=1
-    #Getting the vicinity
-    vc = get_vc(point, max_dim)
-
-    cell_state = find_polygon_id(point,fire) 
-    if cell_state == BURNING:  # Si la cel·la està burning
-        value_veg = find_polygon_id(point,vegetation)
-        if value_veg == 0:
-            #new_state[i, j] = BURNED
-            points = []
-            points.append((i, j))
-            #new_state.append({'id': BURNED, 'points': points})
-            addVectorialMap({'id': BURNED, 'points': points},new_state)
-        else:
-            points = []
-            value_veg -= 1
-            points.append((i, j))
-            #new_vegetation.append({'id': value_veg, 'points': points})
-            addVectorialMap({'id': value_veg, 'points': points},new_vegetation)
-            #The point must be considered on the nex iterations.
-            new_LP.append((i,j))
-            new_LP.extend([elems for elems in get_vc(point, max_dim)])
-    elif cell_state == UNBURNED:
-        for point_vc in vc:
-            #We muist acces information contained on other layers, therefore we will use combination funcion
-            #In this case, the points we will use are georeferences by the same coordinates, therefore the combination functions
-            #is just returning the point.
-            i_vc, j_vc = combination_function(point_vc) #ATENCIO cal retornar un punt, no  puc assegurar en el cas general que el punt es el mateix!!!!!!!!!!
-            cell_state = find_polygon_id(point_vc,fire)
-            cell_humidity =  find_polygon_id(point,humidity)
-            cell_vegetation =  find_polygon_id(point,vegetation) 
-            if cell_state  == BURNING:
-                if cell_humidity > 0:
-                    cell_humidity -= 1
-                    points = []
-                    points.append((i, j))
-                    #new_humidity.append({'id': cell_humidity, 'points': points})
-                    addVectorialMap({'id': cell_humidity, 'points': points},new_humidity)
-                    #new_humidity[i, j] -= 1
-                elif cell_vegetation > 0:
-                    points = []
-                    points.append((i, j))
-                    #new_state.append({'id': BURNING, 'points': points})
-                    addVectorialMap({'id': BURNING, 'points': points},new_state)
-                    #new_state[i, j] = BURNING
-                    new_LP.append((i_vc, j_vc))
-                    new_LP.extend([elems for elems in get_vc(point_vc, max_dim)])
-
-    return new_LP,new_state, new_vegetation, new_humidity
-
 def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity):
     new_LP = []
     nc = []
@@ -937,21 +757,17 @@ def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
     vc = get_vc(point, max_dim)
 
     cell_state = find_polygon_id(point,fire) 
-    if cell_state == BURNING:  # Si la cel·la està burning
+    if cell_state == BURNING:
         value_veg = find_polygon_id(point,vegetation)
         if value_veg == 0:
-            #new_state[i, j] = BURNED
             points = []
             points.append((i, j))
-            #new_state.append({'id': BURNED, 'points': points})
             addVectorialMap({'id': BURNED, 'points': points},new_state)
         else:
             points = []
             value_veg -= 1
             points.append((i, j))
-            #new_vegetation.append({'id': value_veg, 'points': points})
             addVectorialMap({'id': value_veg, 'points': points},new_vegetation)
-            #The point must be considered on the nex iterations.
             new_LP.append((i,j))
             new_LP.extend([elems for elems in get_vc(point, max_dim)])
     elif cell_state == UNBURNED:
@@ -970,84 +786,15 @@ def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
                     cell_humidity -= 1
                     points = []
                     points.append((i, j))
-                    #new_humidity.append({'id': cell_humidity, 'points': points})
                     addVectorialMap({'id': cell_humidity, 'points': points},new_humidity)
-                    #new_humidity[i, j] -= 1
                 elif cell_vegetation > 0:
                     points = []
                     points.append((i, j))
-                    #new_state.append({'id': BURNING, 'points': points})
                     addVectorialMap({'id': BURNING, 'points': points},new_state)
-                    #new_state[i, j] = BURNING
                     new_LP.append((i_vc, j_vc))
                     new_LP.extend([elems for elems in get_vc(point_vc, max_dim)])
 
     return new_LP,new_state, new_vegetation, new_humidity
-
-def DEL_eventScheduling_on_R():
-    folder_path = './'
-    # Auxiliary functions to obtain the information of the layers from files (IDRISI 32 format).
-    #defining the size for the layers, the same for all to simplify
-    size= (100,100)
-
-    #Reading vegetation and humidity layers.
-    fileVegetation = 'vegetation.vec'
-    polygonsVegetation = read_idrisi_vector_file(fileVegetation)
-    fileHumidity = 'humidity.vec'
-    polygonsHumidity = read_idrisi_vector_file(fileHumidity)
-
-    create_idrisi_raster(polygonsVegetation,'vegetation_map2')
-    create_idrisi_raster(polygonsHumidity,'humidity_map2')
-
-    
-    # Reading the wildfire starting point
-    fileFire = 'fire.vec'
-    polygonsFire = read_idrisi_vector_file(fileFire)
-
-    #initial_fire = np.zeros(size)
-    max_dim = [100,100]
-    LP = []
-    
-    for polygon in polygonsFire:
-        polygon_id = polygon['id']
-        points = polygon['points']
-        for (x, y) in points:
-            ini_point = (x, y)
-            #Adding the initial point we change.
-            LP.append(ini_point)
-            #Also adding the neighbourhoods of this point.
-            LP.extend([point for point in get_vc(ini_point, max_dim)])
-    
-    # Variable that will contain all the states we define on the execution of the model.
-    fireEvolution = [polygonsFire]
-    vegetationEvolution = [polygonsVegetation]
-    humidityEvolution = [polygonsHumidity]
-
-    # Number of steeps to execute the evolution function
-    n_steps = 100
-
-    for _ in range(n_steps):
-        LP_rep = []
-        #LP_rep, new_state, new_vegetation, new_humidity = Evolution_function2(LP,fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1])
-        LP_new = []
-        new_state = fireEvolution[-1].copy()
-        new_vegetation=vegetationEvolution[-1].copy()
-        new_humidity=humidityEvolution[-1].copy()
-
-        for point in LP:
-            LP_new, new_state, new_vegetation, new_humidity = Evolution_function_on_R(point,fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity)
-            [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
-
-        LP = []
-        [LP.append(elemento) for elemento in LP_rep if elemento not in LP]
-
-        new_state = simplifyVectorialMap(new_state)
-        fireEvolution.append(new_state)
-        vegetationEvolution.append(new_vegetation)
-        humidityEvolution.append(new_humidity)
-
-    animateLayers(fireEvolution, title='Fire')
-    return fireEvolution, vegetationEvolution, humidityEvolution
 
 def eventScheduling_on_R():
     folder_path = './'
@@ -1166,27 +913,24 @@ def combination_function(point):
 
 if __name__ == "__main__":
 
-    domain = 'Z'
-
-    domain = input(".git\nPlease, select the domain to work on (Z or R): ")
-
-    '''.git\if len(sys.argv) > 1:
-        domain = sys.argv[1]
-    else:
-        print("Working in Z by default.")'''
-    
     # Definition of the function E, the interpretation for the layer state, the main layer.
     UNBURNED = 2
     BURNING = 1
     BURNED = 0
 
-    fireEvolution = []
-    vegetationEvolution = []
-    humidityEvolution = []
+    domain = 'Z'
 
-    if domain == 'Z':
-        fireEvolution, vegetationEvolution, humidityEvolution = eventScheduling_on_Z()
+    domain = input(".git\nPlease, select the domain to work on (Z or R): ")
+    if domain != 'Z' and domain != 'R':
+        print("Invalid domain. Please select 'Z' or 'R'.")
     else:
-        fireEvolution, vegetationEvolution, humidityEvolution = eventScheduling_on_R()
+        fireEvolution = []
+        vegetationEvolution = []
+        humidityEvolution = []
 
-    resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
+        if domain == 'Z':
+            fireEvolution, vegetationEvolution, humidityEvolution = eventScheduling_on_Z()
+        else:
+            fireEvolution, vegetationEvolution, humidityEvolution = eventScheduling_on_R()
+
+        resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
