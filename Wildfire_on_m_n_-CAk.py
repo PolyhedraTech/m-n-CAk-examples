@@ -106,6 +106,20 @@ def read_idrisi_vector_file(file_path):
 
 # Functions to plot the data
 def plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
+    """
+    Plots a series of polygons on a given matplotlib axis.
+    Parameters:
+    ax (matplotlib.axes.Axes): The matplotlib axis to plot on.
+    polygons (list of dict): A list of dictionaries, each containing:
+        - 'id' (int): The identifier of the polygon.
+        - 'points' (list of tuples): A list of (x, y) tuples representing the vertices of the polygon.
+    id (int): The identifier for the current layer being plotted.
+    radius (float, optional): The radius of the circles to be plotted at each vertex. Default is 1.
+    color (str, optional): The color of the circles to be plotted at each vertex. Default is 'green'.
+    title (str, optional): The title of the plot. Default is 'No title'.
+    Returns:
+    None
+    """
     ax.clear()
     
     # Calculate the area of each polygon and sort them by area
@@ -117,55 +131,6 @@ def plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
         
         # Plot the polygon with transparent fill and black edges
         polygon_shape = plt.Polygon(points, closed=True, edgecolor='black', facecolor='none', fill=True)
-        ax.add_patch(polygon_shape)
-        
-        # Plot the edges of the polygon
-        for j in range(len(points)):
-            x1, y1 = points[j]
-            x2, y2 = points[(j + 1) % len(points)]  # Connect to the next point, wrapping around
-            ax.plot([x1, x2], [y1, y2], color='black')  # Draw the edge
-        
-        # Annotate the polygon with its ID
-        centroid_x = sum(x for x, y in points) / len(points)
-        centroid_y = sum(y for x, y in points) / len(points)
-        ax.text(centroid_x, centroid_y, str(polygon_id), fontsize=12, ha='center', va='center', color='black')
-    
-    # Plot each point with a circle on top of everything
-    for polygon in polygons:
-        points = polygon['points']
-        for (x, y) in points:
-            circle = plt.Circle((x, y), radius, color='blue', fill=False)
-            ax.add_patch(circle)
-            ax.plot(x, y, 'ro')  # Plot the point
-    
-    ax.set_aspect('equal', adjustable='box')
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
-    plt.title(f'Layer {id} - '+title)
-    plt.grid(True)
-
-def DEL_plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
-    ax.clear()
-    
-    # Calculate the area of each polygon and sort them by area in ascending order
-    polygons = sorted(polygons, key=lambda p: np.abs(np.sum([x0*y1 - x1*y0 for (x0, y0), (x1, y1) in zip(p['points'], p['points'][1:] + [p['points'][0]])])) / 2)
-    
-    for polygon in polygons:
-        polygon_id = polygon['id']
-        points = polygon['points']
-        
-        # Set the fill color based on the polygon ID
-        if polygon_id == 0:
-            fill_color = 'black'
-        elif polygon_id == 1:
-            fill_color = 'red'
-        elif polygon_id == 2:
-            fill_color = 'green'
-        else:
-            fill_color = 'blue'
-        
-        # Plot the polygon with the specified fill color and black edges
-        polygon_shape = plt.Polygon(points, closed=True, edgecolor='black', facecolor=fill_color, fill=True)
         ax.add_patch(polygon_shape)
         
         # Plot the edges of the polygon
@@ -233,6 +198,18 @@ def plotRaster(ax, matrix, id, color='green', title='No title'):
     #ax.legend()
 
 def resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution):
+    """
+    Displays a window with a slider and radio buttons to visualize the evolution of fire, vegetation, and humidity over time.
+    Parameters:
+    domain (str): The domain type, either 'Z' for raster or other for vectorial.
+    fireEvolution (list): A list of matrices or vectors representing the evolution of fire over time.
+    vegetationEvolution (list): A list of matrices or vectors representing the evolution of vegetation over time.
+    humidityEvolution (list): A list of matrices or vectors representing the evolution of humidity over time.
+    The window contains:
+    - A matplotlib figure to display the selected evolution state.
+    - A slider to navigate through different frames of the selected evolution.
+    - Radio buttons to switch between fire, vegetation, and humidity evolutions.
+    """
     root = tk.Tk()
     root.title("Select Action")
     fig, ax = plt.subplots()
@@ -307,6 +284,17 @@ def resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
 
 #Not used but useful for debugging
 def animateLayers(layersArray, interval=500, radius=1, color='green', title='No title'):
+    """
+    Animates a series of layers using matplotlib.
+    Parameters:
+    layersArray (list): A list of layers, where each layer contains polygons to be animated.
+    interval (int, optional): The delay between frames in milliseconds. Default is 500.
+    radius (int, optional): The radius of the plotted points. Default is 1.
+    color (str, optional): The color of the plotted points. Default is 'green'.
+    title (str, optional): The title of the plot. Default is 'No title'.
+    Returns:
+    None
+    """
     fig, ax = plt.subplots()
     ax.set_aspect('equal', adjustable='box')
     plt.xlabel('X Coordinate')
@@ -396,6 +384,16 @@ def Evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_ve
     return new_LP,new_state, new_vegetation, new_humidity
 
 def eventScheduling_on_Z():
+    """
+    Simulates the evolution of a wildfire over a specified number of steps using event scheduling.
+    This function reads vegetation and humidity data from IDRISI raster files, initializes the wildfire
+    conditions, and iteratively updates the state of the wildfire, vegetation, and humidity layers.
+    Returns:
+        tuple: A tuple containing three lists:
+            - fireEvolution: A list of numpy arrays representing the state of the wildfire at each step.
+            - vegetationEvolution: A list of numpy arrays representing the state of the vegetation at each step.
+            - humidityEvolution: A list of numpy arrays representing the state of the humidity at each step.
+    """
     # Auxiliary functions to obtain the information of the layers from files (IDRISI 32 format).
     # vegetation layer.
     folder_path = './'
@@ -742,6 +740,23 @@ def create_idrisi_raster(polygons, output_filename):
 
 #m:n-CAk on R functions
 def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity):
+    """
+    Simulates the evolution of a wildfire on a grid based on the current state of fire, vegetation, and humidity.
+    Args:
+        point (tuple): The coordinates (i, j) of the current cell.
+        fire (list): The current state of the fire grid.
+        vegetation (list): The current state of the vegetation grid.
+        humidity (list): The current state of the humidity grid.
+        new_state (list): The updated state of the fire grid.
+        new_vegetation (list): The updated state of the vegetation grid.
+        new_humidity (list): The updated state of the humidity grid.
+    Returns:
+        tuple: A tuple containing:
+            - new_LP (list): List of points that have been updated.
+            - new_state (list): The updated state of the fire grid.
+            - new_vegetation (list): The updated state of the vegetation grid.
+            - new_humidity (list): The updated state of the humidity grid.
+    """
     new_LP = []
     nc = []
     vc = []
@@ -797,6 +812,17 @@ def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
     return new_LP,new_state, new_vegetation, new_humidity
 
 def eventScheduling_on_R():
+    """
+    Simulates the evolution of a wildfire over a specified number of steps.
+    This function reads initial conditions from IDRISI vector files for vegetation, humidity, 
+    and the initial fire starting points. It then simulates the spread of the wildfire over 
+    a number of steps, updating the state of the fire, vegetation, and humidity at each step.
+    Returns:
+        tuple: A tuple containing three lists:
+            - fireEvolution: A list of states representing the evolution of the fire.
+            - vegetationEvolution: A list of states representing the evolution of the vegetation.
+            - humidityEvolution: A list of states representing the evolution of the humidity.
+    """
     folder_path = './'
     # Auxiliary functions to obtain the information of the layers from files (IDRISI 32 format).
     #defining the size for the layers, the same for all to simplify
@@ -865,7 +891,8 @@ def eventScheduling_on_R():
 
 def get_vc(point, max_dim):
     """
-    Vicinity function. Get the valid coordinates (Moore neighbourhood on N^2) adjacent to a given point within a specified maximum dimension.
+    Vicinity function. Get the valid coordinates (Moore neighbourhood) adjacent to a given point within a specified maximum dimension.
+    The same for Z^2 and R^2 in this example.
     Args:
         point (tuple): A tuple (i, j) representing the coordinates of the point.
         max_dim (tuple): A tuple (max_i, max_j) representing the maximum dimensions of the grid.
@@ -886,8 +913,9 @@ def get_vc(point, max_dim):
 def get_nc(point):
     """
     Nucleous function. Returns the input point without any modifications as a nucleous.
-
-    Parameters:
+    The same for Z^2 and R^2 in this example.
+    
+    Args:
     point (any): The input point to be returned.
 
     Returns:
@@ -898,6 +926,7 @@ def get_nc(point):
 def combination_function(point):
     """
     Combination function. Processes a given point and returns it as a combination function.
+    The same for Z^2 and R^2 in this example.
 
     Args:
         point: The input point to be processed.
