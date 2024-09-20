@@ -105,7 +105,7 @@ def read_idrisi_vector_file(file_path):
     return polygons
 
 # Functions to plot the data
-def plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
+def plot_vectorial(ax, polygons, id, radius=1, color='green', title='No title'):
     """
     Plots a series of polygons on a given matplotlib axis.
     Parameters:
@@ -153,6 +153,7 @@ def plotVectorial(ax, polygons, id, radius=1, color='green', title='No title'):
             ax.plot(x, y, 'ro')  # Plot the point
     
     ax.set_aspect('equal', adjustable='box')
+
     plt.xlabel('X Coordinate')
     plt.ylabel('Y Coordinate')
     plt.title(f'Layer {id} - '+title)
@@ -197,7 +198,69 @@ def plotRaster(ax, matrix, id, color='green', title='No title'):
     # Add legend
     #ax.legend()
 
-def resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution):
+def create_idrisi_raster(polygons, output_filename):
+    """
+    Creates a raster file in IDRISI format with dimensions of 100x100 points,
+    using the function find_polygon_id to determine the IDs of the polygons
+    that contain each point.
+
+    Args:
+        polygons (list): A list of dictionaries, where each dictionary represents a polygon with the keys:
+            - 'id' (any): The identifier of the polygon.
+            - 'points' (list): A list of tuples representing the vertices of the polygon.
+        output_filename (str): The base name of the output file (without extension).
+    """
+    # Dimensiones del raster
+    width, height = 100, 100
+
+    # Crear una matriz de 100x100 puntos
+    raster = np.zeros((height, width), dtype=int)
+
+    # Iterar sobre cada punto en la matriz
+    for j in range(height):
+        for i in range(width):
+            point = (i, j)
+            polygon_id = find_polygon_id(point, polygons)
+            if polygon_id is not None:
+                raster[j, i] = polygon_id
+
+    # Guardar la matriz en un archivo en formato IDRISI
+    data_filename = f"{output_filename}.img"
+    metadata_filename = f"{output_filename}.doc"
+
+    # Guardar el archivo de datos como texto
+    with open(data_filename, 'w') as data_file:
+        for row in raster:
+            data_file.write(' '.join(map(str, row)) + '\n')
+
+
+    # Crear el archivo de metadatos
+    with open(metadata_filename, 'w') as metadata_file:
+        metadata_file.write(f"file format : IDRISI Raster A.1\n")
+        metadata_file.write(f"file title  : {output_filename}\n")
+        metadata_file.write(f"data type   : integer\n")
+        metadata_file.write(f"file type   : binary\n")
+        metadata_file.write(f"columns     : {width}\n")
+        metadata_file.write(f"rows        : {height}\n")
+        metadata_file.write(f"ref. system : plane\n")
+        metadata_file.write(f"ref. units  : m\n")
+        metadata_file.write(f"unit dist.  : 1.0000000\n")
+        metadata_file.write(f"min. X      : 0.0000000\n")
+        metadata_file.write(f"max. X      : {width}\n")
+        metadata_file.write(f"min. Y      : 0.0000000\n")
+        metadata_file.write(f"max. Y      : {height}\n")
+        metadata_file.write(f"pos'n error : unknown\n")
+        metadata_file.write(f"resolution  : 1.0000000\n")
+        metadata_file.write(f"min. value  : {raster.min()}\n")
+        metadata_file.write(f"max. value  : {raster.max()}\n")
+        metadata_file.write(f"display min : {raster.min()}\n")
+        metadata_file.write(f"display max : {raster.max()}\n")
+        metadata_file.write(f"value units : none\n")
+        metadata_file.write(f"value error : unknown\n")
+        metadata_file.write(f"flag value  : none\n")
+        metadata_file.write(f"flag def'n  : none\n")
+
+def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution):
     """
     Displays a window with a slider and radio buttons to visualize the evolution of fire, vegetation, and humidity over time.
     Parameters:
@@ -222,7 +285,7 @@ def resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
         if domain == 'Z':
             plotRaster(ax, layerEvolution[frame], id=0, color='red', title=f'State at Frame {frame}')
         else:
-            plotVectorial(ax, layerEvolution[frame], id=0, radius=1, color='red', title=f'State at Frame {frame}')
+            plot_vectorial(ax, layerEvolution[frame], id=0, radius=1, color='red', title=f'State at Frame {frame}')
         canvas.draw()
 
     # Label to display the current value of the slider
@@ -243,7 +306,7 @@ def resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
         if domain == 'Z':
             plotRaster(ax, fireEvolution[0], id=0, color='red', title='Fire - Initial State')
         else:
-            plotVectorial(ax, fireEvolution[0], id=0, radius=1, color='red', title='Fire - Initial State')
+            plot_vectorial(ax, fireEvolution[0], id=0, radius=1, color='red', title='Fire - Initial State')
         slider.set(0)  # Reset slider to the beginning
         canvas.draw()
 
@@ -253,7 +316,7 @@ def resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
         if domain == 'Z':
             plotRaster(ax, vegetationEvolution[0], id=0, color='green', title='Vegetation - Initial State')
         else: 
-            plotVectorial(ax, vegetationEvolution[0], id=0, radius=1, color='green', title='Vegetation - Initial State')
+            plot_vectorial(ax, vegetationEvolution[0], id=0, radius=1, color='green', title='Vegetation - Initial State')
         slider.set(0)  # Reset slider to the beginning
         canvas.draw()
         
@@ -263,7 +326,7 @@ def resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
         if domain == 'Z':
             plotRaster(ax, humidityEvolution[0], id=0, color='blue', title='Humidity - Initial State')
         else:
-            plotVectorial(ax, humidityEvolution[0], id=0, radius=1, color='blue', title='Humidity - Initial State')
+            plot_vectorial(ax, humidityEvolution[0], id=0, radius=1, color='blue', title='Humidity - Initial State')
         slider.set(0)  # Reset slider to the beginning
         canvas.draw()
 
@@ -283,7 +346,7 @@ def resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
     root.mainloop()
 
 #Not used but useful for debugging
-def animateLayers(layersArray, interval=500, radius=1, color='green', title='No title'):
+def animate_layers(layersArray, interval=500, radius=1, color='green', title='No title'):
     """
     Animates a series of layers using matplotlib.
     Parameters:
@@ -322,7 +385,7 @@ def animateLayers(layersArray, interval=500, radius=1, color='green', title='No 
         # Get the current layer
         layer = layersArray[i % len(layersArray)]
         # Plot all polygons in the current layer
-        plotVectorial(ax, layer, i, radius=radius, color=color, title=title)
+        plot_vectorial(ax, layer, i, radius=radius, color=color, title=title)
         return []
 
     ani = animation.FuncAnimation(fig, animate, init_func=init, frames=len(layersArray), interval=interval, blit=False, repeat=True)
@@ -331,7 +394,7 @@ def animateLayers(layersArray, interval=500, radius=1, color='green', title='No 
 ##############################################################
 #m:n-CAk on Z specific functions
 ##############################################################
-def Evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_vegetation, new_humidity):
+def evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_vegetation, new_humidity):
     """
     Simulates the evolution of a wildfire in a m:n-CAk cellular automaton model.
     Args:
@@ -353,10 +416,9 @@ def Evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_ve
     nc = []
     vc = []
     max_dim = [100,100]
-    #3Això FORMA PART de la funció d'evolució
     #Getting the nucleous.
     nc = get_nc(point)
-    i, j = point
+    i, j = nc
    
     #Getting the vicinity
     vc = get_vc(point, max_dim)
@@ -383,7 +445,7 @@ def Evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_ve
 
     return new_LP,new_state, new_vegetation, new_humidity
 
-def eventScheduling_on_Z():
+def event_scheduling_on_Z():
     """
     Simulates the evolution of a wildfire over a specified number of steps using event scheduling.
     This function reads vegetation and humidity data from IDRISI raster files, initializes the wildfire
@@ -419,7 +481,6 @@ def eventScheduling_on_Z():
     vegetation_data = vegetation_data.reshape(size)
 
     # Modifying the initial conditions to start the wildfire
-    #initial_fire = np.zeros(size)
     initial_fire = np.full(size, UNBURNED)
     ini_point = [70, 70]
     max_dim = [100, 100]
@@ -450,7 +511,7 @@ def eventScheduling_on_Z():
         new_humidity = humidityEvolution[-1].copy()
         # Event Scheduling simulation engine, where LP is the event list.
         for point in LP:
-            LP_new, new_state, new_vegetation, new_humidity = Evolution_function_on_Z(point, fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity)
+            LP_new, new_state, new_vegetation, new_humidity = evolution_function_on_Z(point, fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity)
             [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
 
         LP = []
@@ -676,70 +737,8 @@ def remove_interior_points(points):
     result = [point for point in points if not is_interior(point, points_set)]
     return result
 
-def create_idrisi_raster(polygons, output_filename):
-    """
-    Crea un archivo raster en formato IDRISI con dimensiones de 100x100 puntos,
-    utilizando la función find_polygon_id para determinar los IDs de los polígonos
-    que contienen cada punto.
-
-    Args:
-        polygons (list): Una lista de diccionarios, donde cada diccionario representa un polígono con las claves:
-            - 'id' (any): El identificador del polígono.
-            - 'points' (list): Una lista de tuplas que representan los vértices del polígono.
-        output_filename (str): El nombre base del archivo de salida (sin extensión).
-    """
-    # Dimensiones del raster
-    width, height = 100, 100
-
-    # Crear una matriz de 100x100 puntos
-    raster = np.zeros((height, width), dtype=int)
-
-    # Iterar sobre cada punto en la matriz
-    for i in range(height):
-        for j in range(width):
-            point = (i, j)
-            polygon_id = find_polygon_id(point, polygons)
-            if polygon_id is not None:
-                raster[i, j] = polygon_id
-
-    # Guardar la matriz en un archivo en formato IDRISI
-    data_filename = f"{output_filename}.img"
-    metadata_filename = f"{output_filename}.doc"
-
-    # Guardar el archivo de datos como texto
-    with open(data_filename, 'w') as data_file:
-        for row in raster:
-            data_file.write(' '.join(map(str, row)) + '\n')
-
-
-    # Crear el archivo de metadatos
-    with open(metadata_filename, 'w') as metadata_file:
-        metadata_file.write(f"file format : IDRISI Raster A.1\n")
-        metadata_file.write(f"file title  : {output_filename}\n")
-        metadata_file.write(f"data type   : integer\n")
-        metadata_file.write(f"file type   : binary\n")
-        metadata_file.write(f"columns     : {width}\n")
-        metadata_file.write(f"rows        : {height}\n")
-        metadata_file.write(f"ref. system : plane\n")
-        metadata_file.write(f"ref. units  : m\n")
-        metadata_file.write(f"unit dist.  : 1.0000000\n")
-        metadata_file.write(f"min. X      : 0.0000000\n")
-        metadata_file.write(f"max. X      : {width}\n")
-        metadata_file.write(f"min. Y      : 0.0000000\n")
-        metadata_file.write(f"max. Y      : {height}\n")
-        metadata_file.write(f"pos'n error : unknown\n")
-        metadata_file.write(f"resolution  : 1.0000000\n")
-        metadata_file.write(f"min. value  : {raster.min()}\n")
-        metadata_file.write(f"max. value  : {raster.max()}\n")
-        metadata_file.write(f"display min : {raster.min()}\n")
-        metadata_file.write(f"display max : {raster.max()}\n")
-        metadata_file.write(f"value units : none\n")
-        metadata_file.write(f"value error : unknown\n")
-        metadata_file.write(f"flag value  : none\n")
-        metadata_file.write(f"flag def'n  : none\n")
-
 #m:n-CAk on R functions
-def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity):
+def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity):
     """
     Simulates the evolution of a wildfire on a grid based on the current state of fire, vegetation, and humidity.
     Args:
@@ -764,16 +763,16 @@ def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
 
     #Getting the nucleous.
     nc = get_nc(point)
-    i, j = point
+    i, j = nc
 
     if i == 70 and j == 70:
         a=1
-    #Getting the vicinity
+    #Getting the vicinity, it can be defined also over the nucleous.
     vc = get_vc(point, max_dim)
 
-    cell_state = find_polygon_id(point,fire) 
+    cell_state = find_polygon_id(nc,fire) 
     if cell_state == BURNING:
-        value_veg = find_polygon_id(point,vegetation)
+        value_veg = find_polygon_id(nc,vegetation)
         if value_veg == 0:
             points = []
             points.append((i, j))
@@ -794,8 +793,8 @@ def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
             if i_vc == 70 and j_vc == 70:
                 a=1
             cell_state = find_polygon_id(point_vc,fire)
-            cell_humidity =  find_polygon_id(point,humidity)
-            cell_vegetation =  find_polygon_id(point,vegetation) 
+            cell_humidity =  find_polygon_id(nc,humidity)
+            cell_vegetation =  find_polygon_id(nc,vegetation) 
             if cell_state  == BURNING:
                 if cell_humidity > 0:
                     cell_humidity -= 1
@@ -811,7 +810,7 @@ def Evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
 
     return new_LP,new_state, new_vegetation, new_humidity
 
-def eventScheduling_on_R():
+def event_scheduling_on_R():
     """
     Simulates the evolution of a wildfire over a specified number of steps.
     This function reads initial conditions from IDRISI vector files for vegetation, humidity, 
@@ -873,7 +872,7 @@ def eventScheduling_on_R():
         new_humidity=humidityEvolution[-1].copy()
 
         for point in LP:
-            LP_new, new_state, new_vegetation, new_humidity = Evolution_function_on_R(point,fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity)
+            LP_new, new_state, new_vegetation, new_humidity = evolution_function_on_R(point,fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity)
             [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
 
         LP = []
@@ -958,8 +957,8 @@ if __name__ == "__main__":
         humidityEvolution = []
 
         if domain == 'Z':
-            fireEvolution, vegetationEvolution, humidityEvolution = eventScheduling_on_Z()
+            fireEvolution, vegetationEvolution, humidityEvolution = event_scheduling_on_Z()
         else:
-            fireEvolution, vegetationEvolution, humidityEvolution = eventScheduling_on_R()
+            fireEvolution, vegetationEvolution, humidityEvolution = event_scheduling_on_R()
 
-        resultsWindow(domain, fireEvolution, vegetationEvolution, humidityEvolution)
+        results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution)

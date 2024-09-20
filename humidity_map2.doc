@@ -14,9 +14,9 @@ max. Y      : 100
 pos'n error : unknown
 resolution  : 1.0000000
 min. value  : 0
-max. value  : 50
+max. value  : 2
 display min : 0
-display max : 50
+display max : 2
 value units : none
 value error : unknown
 flag value  : none
