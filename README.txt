@@ -8,13 +8,25 @@ This project simulates the spread of a wildfire using a cellular automaton model
 ### Python Scripts
 - **Wildfire_on_m_n-CAk.py**: This file contains the main code for the fire cellular automaton. When executed, it displays a window with a slider that can be used to review the entire evolution of the model.
 
+### Fire Layer Vector Files
+- **fire.dvc**: A vector file containing the description of the fire layer.
+- **fire.vec**: A vector file containing the data of the fire layer.
+
+### Vegetation Layer Vector Files
+- **vegetation.dvc**: A vector file containing the description of the vegetation layer.
+- **vegetation.vec**: A vector file containing the data of the vegetation layer.
+
+### Humidity Layer Vector Files
+- **humidity.dvc**: A vector file containing the description of the humidity layer.
+- **humidity.vec**: A vector file containing the data of the humidity layer.
+
 ### Vegetation Layer Raster Files
-- **vegetation_map.doc**: A raster file containing the description of the vegetation layer.
-- **vegetation_map.img**: A raster file containing the data of the vegetation layer.
+- **vegetation.doc**: A raster file containing the description of the vegetation layer.
+- **vegetation.img**: A raster file containing the data of the vegetation layer.
 
 ### Humidity Layer Raster Files
-- **humidity_map.doc**: A raster file containing the description of the humidity layer.
-- **humidity_map.img**: A raster file containing the data of the humidity layer.
+- **humidity.doc**: A raster file containing the description of the humidity layer.
+- **humidity.img**: A raster file containing the data of the humidity layer.
 
 ### Other Files
 - **README.txt**: This file provides an overview of the project and explanations for the different files included.

@@ -459,12 +459,12 @@ def event_scheduling_on_Z():
     # Auxiliary functions to obtain the information of the layers from files (IDRISI 32 format).
     # vegetation layer.
     folder_path = './'
-    vegetation_map_doc_path = os.path.join(folder_path, 'vegetation_map2.doc')
-    vegetation_map_img_path = os.path.join(folder_path, 'vegetation_map2.img')
+    vegetation_map_doc_path = os.path.join(folder_path, 'vegetation.doc')
+    vegetation_map_img_path = os.path.join(folder_path, 'vegetation.img')
 
     # humidity layer
-    humidity_doc_path = os.path.join(folder_path, 'humidity_map2.doc')
-    humidity_img_path = os.path.join(folder_path, 'humidity_map2.img')
+    humidity_doc_path = os.path.join(folder_path, 'humidity.doc')
+    humidity_img_path = os.path.join(folder_path, 'humidity.img')
 
     # Reading the information of the layers
     # vegetation layer
@@ -833,8 +833,8 @@ def event_scheduling_on_R():
     fileHumidity = 'humidity.vec'
     polygonsHumidity = read_idrisi_vector_file(fileHumidity)
 
-    create_idrisi_raster(polygonsVegetation,'vegetation_map2')
-    create_idrisi_raster(polygonsHumidity,'humidity_map2')
+    create_idrisi_raster(polygonsVegetation,'vegetation')
+    create_idrisi_raster(polygonsHumidity,'humidity')
 
     
     # Reading the wildfire starting point
