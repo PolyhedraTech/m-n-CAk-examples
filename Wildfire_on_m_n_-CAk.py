@@ -3,7 +3,8 @@
 # Created on: 2021-06-30
 # Author: Pau Fonseca i Casas
 # Copyright: Pau Fonseca i Casas
-# Description: This script simulates the spread of a wildfire using a m:n-CAk cellular automaton model over Z^2.
+# Description: This script simulates the spread of a wildfire using a m:n-CAk cellular automaton model over Z^2 and R^2
+# All the layer share the same coordinate system, therefore, the funcrion, to change the basis is not needed.
 ##############################################################
 
 import sys
@@ -422,8 +423,9 @@ def evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_ve
    
     #Getting the vicinity
     vc = get_vc(point, max_dim)
-    if state[i, j] == BURNING:  # Si la cel·la està burning
-        if vegetation[i,j] == 0:
+    #if state[i, j] == BURNING:  # Si la cel·la està burning
+    if combination_function_on_Z(nc,state) == BURNING:  # Si la cel·la està burning
+        if combination_function_on_Z(nc,vegetation) == 0: #vegetation[i,j] == 0:
             new_state[i, j] = BURNED
         else:
             new_vegetation[i,j] -= 1
@@ -433,8 +435,8 @@ def evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_ve
         for point_vc in vc:
             #We muist acces information contained on other layers, therefore we will use combination funcion
             #In this case, the points we will use are georeferences by the same coordinates, therefore the combination functions
-            #is just returning the point.
-            i_vc, j_vc = combination_function(point_vc)
+            #is just returning the same point that will be used as center of the vicinity.
+            i_vc, j_vc = point_vc
             if state[i_vc,j_vc] == BURNING:
                 if humidity[i, j] > 0:
                     new_humidity[i, j] -= 1
@@ -770,9 +772,9 @@ def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
     #Getting the vicinity, it can be defined also over the nucleous.
     vc = get_vc(point, max_dim)
 
-    cell_state = find_polygon_id(nc,fire) 
+    cell_state = combination_function_on_R(nc,fire) 
     if cell_state == BURNING:
-        value_veg = find_polygon_id(nc,vegetation)
+        value_veg = combination_function_on_R(nc,vegetation)
         if value_veg == 0:
             points = []
             points.append((i, j))
@@ -789,12 +791,10 @@ def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
             #We must acces information contained on other layers, therefore we will use combination funcion
             #In this case, the points we will use are georeferences by the same coordinates, therefore the combination functions
             #is just returning the point.
-            i_vc, j_vc = combination_function(point_vc) #ATENCIO cal retornar un punt, no  puc assegurar en el cas general que el punt es el mateix!!!!!!!!!!
-            if i_vc == 70 and j_vc == 70:
-                a=1
-            cell_state = find_polygon_id(point_vc,fire)
-            cell_humidity =  find_polygon_id(nc,humidity)
-            cell_vegetation =  find_polygon_id(nc,vegetation) 
+            i_vc, j_vc = point_vc
+            cell_state = combination_function_on_R(point_vc,fire)
+            cell_humidity =  combination_function_on_R(nc,humidity)
+            cell_vegetation =  combination_function_on_R(nc,vegetation) 
             if cell_state  == BURNING:
                 if cell_humidity > 0:
                     cell_humidity -= 1
@@ -922,18 +922,55 @@ def get_nc(point):
     """
     return point
 
-def combination_function(point):
+def set_nc(point, layer, value):
     """
-    Combination function. Processes a given point and returns it as a combination function.
+    Nucleous function. Sets the value for the nucleous.
     The same for Z^2 and R^2 in this example.
 
     Args:
-        point: The input point to be processed.
+    point (any): The input point to be returned.
 
     Returns:
-        The same point that was passed as input.
+    any: The same input point as nucleous.
     """
+    x, y = point
+    layer[x, y] = value
     return point
+
+def combination_function_on_R(point, layer):
+    """
+    Retrieves the value from the specified layer at the given point coordinates.
+    All the layers in this example share the same coordinates, so the E function is the identity function.
+    To simplify the example implementation we define just a single combination_function that uses a a parameter the layer.
+    Determines the polygon ID for a given point within a specified layer.
+    
+    Args:
+        point (tuple): A tuple representing the coordinates of the point (e.g., (x, y)).
+        layer (object): The layer object containing polygon data.
+    Returns:
+        int: The ID of the polygon that contains the point.
+    """
+
+    return find_polygon_id(point, layer)
+
+def combination_function_on_Z(point, layer):
+    """
+    Retrieves the value from the specified layer at the given point coordinates.
+    All the layers in this example share the same coordinates, so the E function is the identity function.
+    To simplify the example implementation we define just a single combination_function that uses a a parameter the layer.
+
+    Args:
+        point (tuple): A tuple containing the coordinates (i, j) of the point.
+        layer (numpy.ndarray): A 2D array representing the layer from which the value is to be retrieved.
+
+    Returns:
+        The value from the layer at the specified point coordinates.
+    """
+    i, j = point
+    return layer[i,j]
+    #return point
+
+
 
 ##############################################################
 #Main
@@ -941,7 +978,7 @@ def combination_function(point):
 
 if __name__ == "__main__":
 
-    # Definition of the function E, the interpretation for the layer state, the main layer.
+    # Definition of S_fire for fire main layer.
     UNBURNED = 2
     BURNING = 1
     BURNED = 0
