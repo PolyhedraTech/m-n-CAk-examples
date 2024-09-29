@@ -423,9 +423,8 @@ def evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_ve
    
     #Getting the vicinity
     vc = get_vc(point, max_dim)
-    #if state[i, j] == BURNING:  # Si la cel·la està burning
-    if combination_function_on_Z(nc,state) == BURNING:  # Si la cel·la està burning
-        if combination_function_on_Z(nc,vegetation) == 0: #vegetation[i,j] == 0:
+    if combination_function_on_Z(nc,state) == BURNING:
+        if combination_function_on_Z(nc,vegetation) == 0:
             new_state[i, j] = BURNED
         else:
             new_vegetation[i,j] -= 1
