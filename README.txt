@@ -36,7 +36,9 @@ The goal of the code in `Wildfire_on_m_n-CAk.py` is to simulate the spread of a 
 The simulation can be done over Z and over R and the results are equivalent because vicinity, nucleous and combination function are euqivalent and both models are based over the discrete topology.
 
 ## Running the Simulation
-To run the simulation, execute the `Wildfire_on_m_n-CAk.py` script. A window with a slider will appear, allowing you to review the entire evolution of the wildfire model.
+To run the simulation, execute the `Wildfire_on_m_n-CAk.py` script. 
+You must select to execute on R or on Z. Executing on Z implies the generation of the raster files from the vectorial files.
+A window with a slider will appear, allowing you to review the entire evolution of the wildfire model.
 
 ## Dependencies
 Ensure you have the necessary dependencies installed. You can install them using the following command:
