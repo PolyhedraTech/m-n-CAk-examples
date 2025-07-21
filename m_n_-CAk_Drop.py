@@ -1,9 +1,9 @@
 ##############################################################
-# Wildfire_on_N.py
+# Simple_on_N.py
 # Created on: 2021-06-30
 # Author: Pau Fonseca i Casas
 # Copyright: Pau Fonseca i Casas
-# Description: This script simulates the spread of a wildfire using a m:n-CAk cellular automaton model over Z^2 and R^2
+# Description: This script simulates the spread of a simiple propagation using a m:n-CAk cellular automaton model over Z^2 and R^2
 # All the layer share the same coordinate system, therefore, the funcrion, to change the basis is not needed.
 ##############################################################
 
@@ -261,18 +261,16 @@ def create_idrisi_raster(polygons, output_filename):
         metadata_file.write(f"flag value  : none\n")
         metadata_file.write(f"flag def'n  : none\n")
 
-def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution):
+def results_window(domain, simpleEvolution):
     """
-    Displays a window with a slider and radio buttons to visualize the evolution of fire, vegetation, and humidity over time.
+    Displays a window with a slider and radio buttons to visualize the evolution over time.
     Parameters:
     domain (str): The domain type, either 'Z' for raster or other for vectorial.
-    fireEvolution (list): A list of matrices or vectors representing the evolution of fire over time.
-    vegetationEvolution (list): A list of matrices or vectors representing the evolution of vegetation over time.
-    humidityEvolution (list): A list of matrices or vectors representing the evolution of humidity over time.
+    simpleEvolution (list): A list of matrices or vectors representing the evolution of the propagation over time.
     The window contains:
     - A matplotlib figure to display the selected evolution state.
     - A slider to navigate through different frames of the selected evolution.
-    - Radio buttons to switch between fire, vegetation, and humidity evolutions.
+    - Radio buttons to switch between layers.
     """
     root = tk.Tk()
     root.title("Select Action")
@@ -290,59 +288,33 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
         canvas.draw()
 
     # Label to display the current value of the slider
-    slider_label = tk.Label(root, text="Steep")
+    slider_label = tk.Label(root, text="Steeps")
     slider_label.pack(side=tk.BOTTOM, pady=5)
 
     # Slider for selecting the matrix
-    slider = ttk.Scale(root, from_=0, to=len(fireEvolution) - 1, orient=tk.HORIZONTAL, command=lambda val: on_slider_change(val, fireEvolution))
+    slider = ttk.Scale(root, from_=0, to=len(simpleEvolution) - 1, orient=tk.HORIZONTAL, command=lambda val: on_slider_change(val, simpleEvolution))
     slider.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
      
     button_frame = ttk.Frame(root)
     button_frame.pack(pady=20)
 
     # Buttons to change the layerEvolution
-    def set_fire_evolution():
-        slider.config(command=lambda val: on_slider_change(val, fireEvolution))
-        slider_label.config(text="Fire")
+    def set_simple_evolution():
+        slider.config(command=lambda val: on_slider_change(val, simpleEvolution))
+        slider_label.config(text="Evolution")
         if domain == 'Z':
-            plotRaster(ax, fireEvolution[0], id=0, color='red', title='Fire - Initial State')
+            plotRaster(ax, simpleEvolution[0], id=0, color='red', title='Evolution - Initial State')
         else:
-            plot_vectorial(ax, fireEvolution[0], id=0, radius=1, color='red', title='Fire - Initial State')
-        slider.set(0)  # Reset slider to the beginning
-        canvas.draw()
-
-    def set_vegetation_evolution():
-        slider.config(command=lambda val: on_slider_change(val, vegetationEvolution))
-        slider_label.config(text="Vegetation")
-        if domain == 'Z':
-            plotRaster(ax, vegetationEvolution[0], id=0, color='green', title='Vegetation - Initial State')
-        else: 
-            plot_vectorial(ax, vegetationEvolution[0], id=0, radius=1, color='green', title='Vegetation - Initial State')
-        slider.set(0)  # Reset slider to the beginning
-        canvas.draw()
-        
-    def set_humidity_evolution():
-        slider.config(command=lambda val: on_slider_change(val, humidityEvolution))
-        slider_label.config(text="Humidity")
-        if domain == 'Z':
-            plotRaster(ax, humidityEvolution[0], id=0, color='blue', title='Humidity - Initial State')
-        else:
-            plot_vectorial(ax, humidityEvolution[0], id=0, radius=1, color='blue', title='Humidity - Initial State')
+            plot_vectorial(ax, simpleEvolution[0], id=0, radius=1, color='red', title='Evolution - Initial State')
         slider.set(0)  # Reset slider to the beginning
         canvas.draw()
 
     # Variable to keep track of the selected option
-    selected_option = tk.StringVar(value="Fire")
+    selected_option = tk.StringVar(value="Evolution")
 
  # Radio buttons to select the layerEvolution
-    radio_fire = ttk.Radiobutton(button_frame, text="Fire", variable=selected_option, value="Fire", command=set_fire_evolution)
-    radio_fire.pack(side=tk.LEFT, padx=10)
-
-    radio_vegetation = ttk.Radiobutton(button_frame, text="Vegetation", variable=selected_option, value="Vegetation", command=set_vegetation_evolution)
-    radio_vegetation.pack(side=tk.LEFT, padx=10)
-
-    radio_humidity = ttk.Radiobutton(button_frame, text="Humidity", variable=selected_option, value="Humidity", command=set_humidity_evolution)
-    radio_humidity.pack(side=tk.LEFT, padx=10)
+    radio_evolution = ttk.Radiobutton(button_frame, text="Evolution", variable=selected_option, value="Evolution", command=set_simple_evolution)
+    radio_evolution.pack(side=tk.LEFT, padx=10)
 
     root.mainloop()
 
@@ -395,98 +367,54 @@ def animate_layers(layersArray, interval=500, radius=1, color='green', title='No
 ##############################################################
 #m:n-CAk on Z specific functions
 ##############################################################
-def evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_vegetation, new_humidity):
+def evolution_function_on_Z(point, state, new_state):
     """
-    Simulates the evolution of a wildfire in a m:n-CAk cellular automaton model.
+    Simulates a simple propagation, the cell FULL propagates to the neighbourhood EMPTY cell.
     Args:
-        point (tuple): The coordinates (i, j) of the current cell.
-        state (ndarray): The current state of the grid, where each cell can be BURNING, UNBURNED, or BURNED.
-        vegetation (ndarray): The current vegetation levels of the grid.
-        humidity (ndarray): The current humidity levels of the grid.
+        point (tuple): The coordinates (x, y) of the current cell.
+        state (ndarray): The current state of the grid.
         new_state (ndarray): The state of the grid for the next time step.
-        new_vegetation (ndarray): The vegetation levels of the grid for the next time step.
-        new_humidity (ndarray): The humidity levels of the grid for the next time step.
     Returns:
-        tuple: A tuple containing:
-            - new_LP (list): List of points that have changed state.
-            - new_state (ndarray): Updated state of the grid.
-            - new_vegetation (ndarray): Updated vegetation levels of the grid.
-            - new_humidity (ndarray): Updated humidity levels of the grid.
+        tuple: (new_LP, new_state)
     """
     new_LP = []
-    nc = []
-    vc = []
-    max_dim = [100,100]
-    #Getting the nucleous.
-    nc = get_nc(point)
-    i, j = nc
-   
-    #Getting the vicinity
-    vc = get_vc(point, max_dim)
-    if combination_function_on_Z(nc,state) == BURNING:
-        if combination_function_on_Z(nc,vegetation) == 0:
-            new_state[i, j] = BURNED
-        else:
-            new_vegetation[i,j] -= 1
-            new_LP.append([i,j])
-            new_LP.extend([elems for elems in get_vc(point, max_dim)])
-    elif state[i,j] == UNBURNED:
+    max_dim = [100, 100]
+    x, y = point  # Convención (x, y)
+    vc = get_vc((x, y), max_dim)
+    if combination_function_on_Z((x, y), state) == FULL:
+        new_LP.append((x, y))
+        new_LP.extend([elems for elems in vc])
+        return new_LP, new_state
+    elif state[y, x] == EMPTY:
         for point_vc in vc:
-            #We muist acces information contained on other layers, therefore we will use combination funcion
-            #In this case, the points we will use are georeferences by the same coordinates, therefore the combination functions
-            #is just returning the same point that will be used as center of the vicinity.
-            i_vc, j_vc = point_vc
-            if state[i_vc,j_vc] == BURNING:
-                if humidity[i, j] > 0:
-                    new_humidity[i, j] -= 1
-                elif vegetation[i,j] > 0:
-                    new_state[i, j] = BURNING
-                    new_LP.append([i_vc, j_vc])
-                    new_LP.extend([elems for elems in get_vc(point_vc, max_dim)])
-
-    return new_LP,new_state, new_vegetation, new_humidity
+            x_vc, y_vc = point_vc
+            if state[y_vc, x_vc] == FULL:
+                new_state[y, x] = FULL
+                new_LP.append((x_vc, y_vc))
+                new_LP.extend([elems for elems in get_vc((x_vc, y_vc), max_dim)])
+                return new_LP, new_state
+    return new_LP, new_state
 
 def event_scheduling_on_Z():
     """
-    Simulates the evolution of a wildfire over a specified number of steps using event scheduling.
-    This function reads vegetation and humidity data from IDRISI raster files, initializes the wildfire
-    conditions, and iteratively updates the state of the wildfire, vegetation, and humidity layers.
+    Simulates a simple propagation using event scheduling.
     Returns:
         tuple: A tuple containing three lists:
-            - fireEvolution: A list of numpy arrays representing the state of the wildfire at each step.
-            - vegetationEvolution: A list of numpy arrays representing the state of the vegetation at each step.
-            - humidityEvolution: A list of numpy arrays representing the state of the humidity at each step.
+            - simpleEvolution: A list of numpy arrays representing the state of the evolution at each step.
     """
     # Auxiliary functions to obtain the information of the layers from files (IDRISI 32 format).
     # vegetation layer.
     folder_path = './'
-    vegetation_map_doc_path = os.path.join(folder_path, 'vegetation.doc')
-    vegetation_map_img_path = os.path.join(folder_path, 'vegetation.img')
-
-    # humidity layer
-    humidity_doc_path = os.path.join(folder_path, 'humidity.doc')
-    humidity_img_path = os.path.join(folder_path, 'humidity.img')
-
-    # Reading the information of the layers
-    # vegetation layer
-    vegetation_data = read_idrisi_raster_file(vegetation_map_img_path)
-
-    # humidity layer
-    humidity_data = read_idrisi_raster_file(humidity_img_path)
 
     # defining the size for the layers, the same for all.
     size = (100, 100)
 
-    # Auxiliary functions to convert the vector in a matrix of data for both layers.
-    humidity_data = humidity_data.reshape(size)
-    vegetation_data = vegetation_data.reshape(size)
-
-    # Modifying the initial conditions to start the wildfire
-    initial_fire = np.full(size, UNBURNED)
+    # Modifying the initial conditions to start the propagation
+    initial_propagation = np.full(size, EMPTY)
     ini_point = [70, 70]
     max_dim = [100, 100]
     i, j = ini_point
-    initial_fire[i, j] = BURNING
+    initial_propagation[i, j] = FULL
     LP = []
 
     # Adding the initial point we change.
@@ -496,9 +424,8 @@ def event_scheduling_on_Z():
     LP.extend([point for point in get_vc(ini_point, max_dim)])
 
     # Variable that will contain all the states we define on the execution of the model.
-    fireEvolution = [initial_fire]
-    vegetationEvolution = [vegetation_data]
-    humidityEvolution = [humidity_data]
+    simpleEvolution = [initial_propagation]
+
 
     # Number of steps to execute the evolution function
     n_steps = 100
@@ -507,21 +434,18 @@ def event_scheduling_on_Z():
     for _ in range(n_steps):
         LP_rep = []
         LP_new = []
-        new_state = fireEvolution[-1].copy()
-        new_vegetation = vegetationEvolution[-1].copy()
-        new_humidity = humidityEvolution[-1].copy()
+        new_state = simpleEvolution[-1].copy()
+
         # Event Scheduling simulation engine, where LP is the event list.
         for point in LP:
-            LP_new, new_state, new_vegetation, new_humidity = evolution_function_on_Z(point, fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity)
+            LP_new, new_state = evolution_function_on_Z(point, simpleEvolution[-1], new_state)
             [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
 
         LP = []
         [LP.append(elemento) for elemento in LP_rep if elemento not in LP]
-        fireEvolution.append(new_state)
-        vegetationEvolution.append(new_vegetation)
-        humidityEvolution.append(new_humidity)
+        simpleEvolution.append(new_state)
 
-    return fireEvolution, vegetationEvolution, humidityEvolution
+    return simpleEvolution
 
 ##############################################################
 #m:n-CAk on R specific functions
@@ -739,23 +663,17 @@ def remove_interior_points(points):
     return result
 
 #m:n-CAk on R functions
-def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity):
+def evolution_function_on_R(point,evolution, new_state):
     """
-    Simulates the evolution of a wildfire on a grid based on the current state of fire, vegetation, and humidity.
+    Simulates the evolution of a siimple propagation on a grid based on the cell state.
     Args:
         point (tuple): The coordinates (i, j) of the current cell.
-        fire (list): The current state of the fire grid.
-        vegetation (list): The current state of the vegetation grid.
-        humidity (list): The current state of the humidity grid.
-        new_state (list): The updated state of the fire grid.
-        new_vegetation (list): The updated state of the vegetation grid.
-        new_humidity (list): The updated state of the humidity grid.
+        evolution (list): The current state of the evolution grid.
+        new_state (list): The updated state of the evolution grid.
     Returns:
         tuple: A tuple containing:
             - new_LP (list): List of points that have been updated.
-            - new_state (list): The updated state of the fire grid.
-            - new_vegetation (list): The updated state of the vegetation grid.
-            - new_humidity (list): The updated state of the humidity grid.
+            - new_state (list): The updated state of the evolution grid.
     """
     new_LP = []
     nc = []
@@ -771,80 +689,58 @@ def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
     #Getting the vicinity, it can be defined also over the nucleous.
     vc = get_vc(point, max_dim)
 
-    cell_state = combination_function_on_R(nc,fire) 
-    if cell_state == BURNING:
-        value_veg = combination_function_on_R(nc,vegetation)
-        if value_veg == 0:
-            points = []
-            points.append((i, j))
-            addVectorialMap({'id': BURNED, 'points': points},new_state)
-        else:
-            points = []
-            value_veg -= 1
-            points.append((i, j))
-            addVectorialMap({'id': value_veg, 'points': points},new_vegetation)
-            new_LP.append((i,j))
-            new_LP.extend([elems for elems in get_vc(point, max_dim)])
-    elif cell_state == UNBURNED:
+    cell_state = combination_function_on_R(nc,evolution) 
+
+    if cell_state == FULL:
+        # If the cell is full, we do not need to do anything, the propagation here already happens.
+        # We add the vincinity to the new_LP list.
+        points = []
+        points.append((i, j))
+        addVectorialMap({'id': FULL, 'points': points},new_state)
+        new_LP.append((i, j))
+        new_LP.extend([elems for elems in get_vc(point, max_dim)])
+        return new_LP, new_state
+    #In order to avoid the need to define a poligon for the EMPTY state, we will not use it.
+    #instead, we will use the FULL polygon as the only that defines the propagation.
+    elif cell_state != FULL:
         for point_vc in vc:
             #We must acces information contained on other layers, therefore we will use combination funcion
             #In this case, the points we will use are georeferences by the same coordinates, therefore the combination functions
             #is just returning the point.
             i_vc, j_vc = point_vc
-            cell_state = combination_function_on_R(point_vc,fire)
-            cell_humidity =  combination_function_on_R(nc,humidity)
-            cell_vegetation =  combination_function_on_R(nc,vegetation) 
-            if cell_state  == BURNING:
-                if cell_humidity > 0:
-                    cell_humidity -= 1
-                    points = []
-                    points.append((i, j))
-                    addVectorialMap({'id': cell_humidity, 'points': points},new_humidity)
-                elif cell_vegetation > 0:
-                    points = []
-                    points.append((i, j))
-                    addVectorialMap({'id': BURNING, 'points': points},new_state)
-                    new_LP.append((i_vc, j_vc))
-                    new_LP.extend([elems for elems in get_vc(point_vc, max_dim)])
+            cell_state = combination_function_on_R(point_vc,evolution)
+            if cell_state  == FULL:
+                points = []
+                points.append((i, j))
+                addVectorialMap({'id': FULL, 'points': points},new_state)
+                new_LP.append((i_vc, j_vc))
+                new_LP.extend([elems for elems in get_vc(point_vc, max_dim)])
+                return new_LP,new_state
 
-    return new_LP,new_state, new_vegetation, new_humidity
+    return new_LP,new_state
 
 def event_scheduling_on_R():
     """
-    Simulates the evolution of a wildfire over a specified number of steps.
-    This function reads initial conditions from IDRISI vector files for vegetation, humidity, 
-    and the initial fire starting points. It then simulates the spread of the wildfire over 
-    a number of steps, updating the state of the fire, vegetation, and humidity at each step.
+    Simulates a simple evolution over a specified number of steps.
+    This function reads initial conditions from IDRISI vector files for propagation.
     Returns:
         tuple: A tuple containing three lists:
-            - fireEvolution: A list of states representing the evolution of the fire.
-            - vegetationEvolution: A list of states representing the evolution of the vegetation.
-            - humidityEvolution: A list of states representing the evolution of the humidity.
+            - propagationEvolution: A list of states representing the evolution of the propagation.
     """
     folder_path = './'
     # Auxiliary functions to obtain the information of the layers from files (IDRISI 32 format).
     #defining the size for the layers, the same for all to simplify
     size= (100,100)
 
-    #Reading vegetation and humidity layers.
-    fileVegetation = 'vegetation.vec'
-    polygonsVegetation = read_idrisi_vector_file(fileVegetation)
-    fileHumidity = 'humidity.vec'
-    polygonsHumidity = read_idrisi_vector_file(fileHumidity)
-
-    create_idrisi_raster(polygonsVegetation,'vegetation')
-    create_idrisi_raster(polygonsHumidity,'humidity')
-
     
-    # Reading the wildfire starting point
-    fileFire = 'fire.vec'
-    polygonsFire = read_idrisi_vector_file(fileFire)
+    # Reading the propagation starting point
+    fileEvolution = 'simple.vec'
+    polygonsPropagation = read_idrisi_vector_file(fileEvolution)
 
-    #initial_fire = np.zeros(size)
     max_dim = [100,100]
     LP = []
     
-    for polygon in polygonsFire:
+    for polygon in polygonsPropagation:
         polygon_id = polygon['id']
         points = polygon['points']
         for (x, y) in points:
@@ -855,33 +751,26 @@ def event_scheduling_on_R():
             LP.extend([point for point in get_vc(ini_point, max_dim)])
     
     # Variable that will contain all the states we define on the execution of the model.
-    fireEvolution = [polygonsFire]
-    vegetationEvolution = [polygonsVegetation]
-    humidityEvolution = [polygonsHumidity]
+    propagationEvolution = [polygonsPropagation]
 
     # Number of steeps to execute the evolution function
     n_steps = 100
 
     for _ in range(n_steps):
         LP_rep = []
-        #LP_rep, new_state, new_vegetation, new_humidity = Evolution_function2(LP,fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1])
         LP_new = []
-        new_state = fireEvolution[-1].copy()
-        new_vegetation=vegetationEvolution[-1].copy()
-        new_humidity=humidityEvolution[-1].copy()
+        new_state = propagationEvolution[-1].copy()
 
         for point in LP:
-            LP_new, new_state, new_vegetation, new_humidity = evolution_function_on_R(point,fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity)
+            LP_new, new_state = evolution_function_on_R(point,propagationEvolution[-1], new_state)
             [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
 
         LP = []
         [LP.append(elemento) for elemento in LP_rep if elemento not in LP]
 
-        fireEvolution.append(simplifyVectorialMap(new_state))
-        vegetationEvolution.append(simplifyVectorialMap(new_vegetation))
-        humidityEvolution.append(simplifyVectorialMap(new_humidity))
+        propagationEvolution.append(simplifyVectorialMap(new_state))
 
-    return fireEvolution, vegetationEvolution, humidityEvolution
+    return propagationEvolution
 
 ##############################################################
 #m:n-CAk main functions
@@ -977,10 +866,9 @@ def combination_function_on_Z(point, layer):
 
 if __name__ == "__main__":
 
-    # Definition of S_fire for fire main layer.
-    UNBURNED = 2
-    BURNING = 1
-    BURNED = 0
+    # Definition of S_state for propagation main layer.
+    FULL = 1
+    EMPTY = 0
 
     domain = 'Z'
 
@@ -988,13 +876,10 @@ if __name__ == "__main__":
     if domain != 'Z' and domain != 'R':
         print("Invalid domain. Please select 'Z' or 'R'.")
     else:
-        fireEvolution = []
-        vegetationEvolution = []
-        humidityEvolution = []
 
         if domain == 'Z':
-            fireEvolution, vegetationEvolution, humidityEvolution = event_scheduling_on_Z()
+            simpleEvolution = event_scheduling_on_Z()
         else:
-            fireEvolution, vegetationEvolution, humidityEvolution = event_scheduling_on_R()
+            simpleEvolution = event_scheduling_on_R()
 
-        results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution)
+        results_window(domain, simpleEvolution)

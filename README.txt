@@ -1,7 +1,7 @@
 # Wildfire Simulation Project
 
 ## Overview
-This project simulates the spread of a wildfire using a cellular automaton model based on m:n-CAk. The simulation takes into account various factors such as vegetation type, and humidity levels, to model the propagation of the fire over a landscape. The output of the simulation is a video that visually represents the spread of the wildfire over time, providing insights into how different conditions affect the fire's behavior.
+This project simulates the spread of a wildfire using a cellular automaton model based on m:n-CAk. The simulation takes into account various factors such as vegetation type, humidity levels, and wind conditions to model the propagation of the fire over a landscape. The output of the simulation is a video that visually represents the spread of the wildfire over time, providing insights into how different conditions affect the fire's behavior.
 
 ## Files in the Project
 
@@ -28,12 +28,16 @@ This project simulates the spread of a wildfire using a cellular automaton model
 - **humidity.doc**: A raster file containing the description of the humidity layer.
 - **humidity.img**: A raster file containing the data of the humidity layer.
 
+### Wind Layer Raster Files
+- **wind.doc**: A raster file containing the description of the wind layer.
+- **wind.img**: A raster file containing the data of the wind layer.
+
 ### Other Files
 - **README.txt**: This file provides an overview of the project and explanations for the different files included.
 
 ## Goal of Wildfire_on_m_n-CAk.py
-The goal of the code in `Wildfire_on_m_n-CAk.py` is to simulate the spread of a wildfire using a cellular automaton model based on m:n-CAk. The simulation takes into account various factors such as vegetation type, and humidity levels to model the propagation of the fire over a landscape. The output of the simulation is a video that visually represents the spread of the wildfire over time, providing insights into how different conditions affect the fire's behavior.
-The simulation can be done over Z and over R and the results are equivalent because vicinity, nucleous and combination function are euqivalent and both models are based over the discrete topology.
+The goal of the code in `Wildfire_on_m_n-CAk.py` is to simulate the spread of a wildfire using a cellular automaton model based on m:n-CAk. The simulation takes into account various factors such as vegetation type, humidity levels, and wind conditions to model the propagation of the fire over a landscape. The output of the simulation is a video that visually represents the spread of the wildfire over time, providing insights into how different conditions affect the fire's behavior.
+The simulation can be done over Z and over R and the results are equivalent because vicinity, nucleous and combination function are equivalent and both models are based over the discrete topology.
 
 ## Running the Simulation
 To run the simulation, execute the `Wildfire_on_m_n-CAk.py` script. 
