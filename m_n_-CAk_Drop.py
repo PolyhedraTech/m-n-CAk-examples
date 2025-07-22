@@ -3,7 +3,7 @@
 # Created on: 2021-06-30
 # Author: Pau Fonseca i Casas
 # Copyright: Pau Fonseca i Casas
-# Description: This script simulates the spread of a simiple propagation using a m:n-CAk cellular automaton model over Z^2 and R^2
+# Description: This script simulates the spread of a simple propagation using a m:n-CAk cellular automaton model over Z^2 and R^2
 # All the layer share the same coordinate system, therefore, the funcrion, to change the basis is not needed.
 ##############################################################
 

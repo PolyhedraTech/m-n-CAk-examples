@@ -1,7 +1,8 @@
-# Wildfire Simulation Project
 
-## Overview
-This project simulates the spread of a wildfire using a cellular automaton model based on m:n-CAk. The simulation takes into account various factors such as vegetation type, humidity levels, and wind conditions to model the propagation of the fire over a landscape. The output of the simulation is a video that visually represents the spread of the wildfire over time, providing insights into how different conditions affect the fire's behavior.
+# m:n-CAk Cellular Automaton Demonstration
+
+## Project Overview
+This project demonstrates the capabilities of the m:n-CAk cellular automaton over both continuous and discrete spaces. The main goal is not to model a realistic wildfire, but to showcase how the m:n-CAk automaton can be applied to different spatial representations and how its behavior is consistent across these domains. The simulation uses synthetic layers (vegetation, humidity, wind, fire) to illustrate the automaton's flexibility and power.
 
 ## Files in the Project
 
@@ -35,9 +36,15 @@ This project simulates the spread of a wildfire using a cellular automaton model
 ### Other Files
 - **README.txt**: This file provides an overview of the project and explanations for the different files included.
 
-## Goal of Wildfire_on_m_n-CAk.py
-The goal of the code in `Wildfire_on_m_n-CAk.py` is to simulate the spread of a wildfire using a cellular automaton model based on m:n-CAk. The simulation takes into account various factors such as vegetation type, humidity levels, and wind conditions to model the propagation of the fire over a landscape. The output of the simulation is a video that visually represents the spread of the wildfire over time, providing insights into how different conditions affect the fire's behavior.
-The simulation can be done over Z and over R and the results are equivalent because vicinity, nucleous and combination function are equivalent and both models are based over the discrete topology.
+
+## Goal of m_n-CAk_Wildfire.py
+Demonstrates the spread of a synthetic wildfire using the m:n-CAk cellular automaton. The purpose is to show how the automaton operates over both continuous (R) and discrete (Z) spaces, using artificial layers for vegetation, humidity, and wind. The results illustrate the equivalence of the automaton's behavior in both topologies.
+
+## Goal of m_n-CAk_Drop.py
+Demonstrates the evolution of a drop/spread scenario using the m:n-CAk cellular automaton. This example highlights the automaton's ability to model diffusion-like processes and its consistency across continuous and discrete domains.
+
+## Goal of m_n-CAk_Vortex.py
+Demonstrates a vortex scenario using the m:n-CAk cellular automaton. This model showcases the automaton's flexibility in representing more complex, dynamic patterns in both continuous and discrete spaces.
 
 ## Running the Simulation
 To run the simulation, execute the `Wildfire_on_m_n-CAk.py` script. 

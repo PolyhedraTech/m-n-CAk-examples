@@ -952,8 +952,8 @@ def get_vc_Z(point, max_dim, wind_speed=0):
     wind_speed = wind_speed*1.5  # Assuming wind_speed is a multiplier for the number of steps to consider
     # Add the wind effect by extending the vicinity in the direction of the wind
     while wind_speed > 0: 
-        i=i+1
-        if i < max_i - 1: vc.append((i+1, j))
+        j=j+1
+        if j < max_j - 1: vc.append((i, j+1))
         wind_speed -= 1
 
     return vc
@@ -982,7 +982,7 @@ def get_vc_R(point, max_dim, wind_speed=0):
     # Add the wind effect by extending the vicinity in the direction of the wind
     # we extend j because on numpy the first coordinate is the y coordinate and the second is the x coordinate.
     if wind_speed > 0: 
-        if i+wind_speed < max_i - 1: vc.append((i,j+wind_speed))
+        if i+wind_speed < max_i - 1: vc.append((i+wind_speed,j))
 
     return vc
 
