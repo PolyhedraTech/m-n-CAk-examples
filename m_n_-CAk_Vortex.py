@@ -367,26 +367,26 @@ def animate_layers(layersArray, interval=500, radius=1, color='green', title='No
 ##############################################################
 #m:n-CAk on Z specific functions
 ##############################################################
-def evolution_function_on_Z(point, state, new_state, step, max_steps):
-    x, y = point
-    center = (50, 50)
-    radius, dtheta = get_vortex_params((x, y), step, max_steps)
-    vc = get_vortex_vc_Z(center, (x, y), [100, 100], radius=radius, dtheta=dtheta)
-    new_LP = []
+def evolution_function_on_Z(points, state, new_state):
+    new_LP_set = set()
     max_dim = [100, 100]
-    if combination_function_on_Z((x, y), state) == FULL:
-        new_LP.append((x, y))
-        new_LP.extend(vc)
-        return new_LP, new_state
-    elif state[y, x] == EMPTY:
-        for point_vc in vc:
-            x_vc, y_vc = point_vc
-            if state[y_vc, x_vc] == FULL:
-                new_state[y, x] = FULL
-                new_LP.append((x_vc, y_vc))
-                new_LP.extend(get_vortex_vc_Z(center, (x_vc, y_vc), max_dim))
-                return new_LP, new_state
-    return new_LP, new_state
+
+    for point in points:
+        x, y = point
+        vc = get_vc_Z([point], max_dim)
+
+        if combination_function_on_Z(point, state) == FULL:
+            new_LP_set.add(point)
+            new_LP_set.update(vc)
+        elif state[y, x] == EMPTY:
+            for point_vc in vc:
+                x_vc, y_vc = point_vc
+                if state[y_vc, x_vc] == FULL:
+                    new_state[y, x] = FULL
+                    new_LP_set.add(point_vc)
+                    new_LP_set.update(get_vc_Z([point_vc], max_dim))
+                    break
+    return list(new_LP_set), new_state
 
 def event_scheduling_on_Z():
     """
@@ -395,11 +395,7 @@ def event_scheduling_on_Z():
         tuple: A tuple containing three lists:
             - simpleEvolution: A list of numpy arrays representing the state of the evolution at each step.
     """
-    # Auxiliary functions to obtain the information of the layers from files (IDRISI 32 format).
-    # vegetation layer.
-    folder_path = './'
-
-    # defining the size for the layers, the same for all.
+    # ... existing code ...
     size = (100, 100)
     max_dim = size
 
@@ -408,29 +404,34 @@ def event_scheduling_on_Z():
     ini_point = (70, 70)  # (x, y)
     x, y = ini_point
     initial_propagation[y, x] = FULL
-    LP = [ini_point]
-    LP.extend([point for point in get_vc(ini_point, max_dim)])
+    
+    # LP is the list of active nucleous for the next step
+    LP = get_nc_Z([ini_point], [])
+    
+    # Get the initial vicinity to schedule the first step
+    vicinity = get_vc_Z(LP, max_dim)
+    
+    # The event list for the first step is the union of the nucleous and its vicinity
+    event_list = list(set(LP) | set(vicinity))
 
     # Variable that will contain all the states we define on the execution of the model.
     simpleEvolution = [initial_propagation]
-
 
     # Number of steps to execute the evolution function
     n_steps = 100
 
     # n_steps represents the finish condition of the simulation.
     for step in range(n_steps):
-        LP_rep = []
-        LP_new = []
         new_state = simpleEvolution[-1].copy()
 
-        # Event Scheduling simulation engine, where LP is the event list.
-        for point in LP:
-            LP_new, new_state = evolution_function_on_Z(point, simpleEvolution[-1], new_state, step, n_steps)
-            [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
-
-        LP = []
-        [LP.append(elemento) for elemento in LP_rep if elemento not in LP]
+        # The new nucleous is the entire set of points that changed state in the last step
+        nucleous = event_list
+        
+        # Calculate the new state and the next set of points to check
+        LP_new, new_state = evolution_function_on_Z(nucleous, simpleEvolution[-1], new_state)
+        
+        # The new event list is the new nucleous
+        event_list = LP_new
 
         simpleEvolution.append(new_state)
 
@@ -658,43 +659,42 @@ def remove_interior_points(points):
     return result
 
 #m:n-CAk on R functions
-def evolution_function_on_R(point, evolution, new_state, step, max_steps):
+def evolution_function_on_R(points, evolution, new_state):
     """
-    Simulates the evolution of a simple propagation on a grid based on the cell state, using vortex parameters.
+    Simulates the evolution of a simple propagation on a grid based on the cell state.
     Args:
-        point (tuple): The coordinates (i, j) of the current cell.
+        points (list): The list of points to process.
         evolution (list): The current state of the evolution grid.
         new_state (list): The updated state of the evolution grid.
-        step (int): Current time step.
-        max_steps (int): Total number of steps.
     Returns:
         tuple: (new_LP, new_state)
     """
-    new_LP = []
-    center = (50, 50)  # Ajusta el centro según tu dominio
-    radius, dtheta = get_vortex_params(point, step, max_steps)
-    vc = get_vortex_vc_R(center, point, radius=radius, dtheta=dtheta)
-    cell_state = combination_function_on_R(point, evolution)
-    i, j = point
-    if cell_state == FULL:
-        points = []
-        points.append((i, j))
-        addVectorialMap([{'id': FULL, 'points': points}], new_state)
-        new_LP.append((i, j))
-        new_LP.extend(vc)
-        return new_LP, new_state
-    elif cell_state != FULL:
-        for point_vc in vc:
-            i_vc, j_vc = point_vc
-            cell_state = combination_function_on_R(point_vc, evolution)
-            if cell_state == FULL:
-                points = []
-                points.append((i, j))
-                addVectorialMap([{'id': FULL, 'points': points}], new_state)
-                new_LP.append((i_vc, j_vc))
-                new_LP.extend(get_vortex_vc_R(center, point_vc, radius=radius, dtheta=dtheta))
-                return new_LP, new_state
-    return new_LP, new_state
+    new_LP_set = set()
+    max_dim = [100, 100]
+
+    for point in points:
+        i, j = point
+        vc = get_vc_R([point], max_dim)
+        
+        # Check current point's state
+        if combination_function_on_R(point, evolution) == FULL:
+            # If the point is already FULL, it remains active, and so do its neighbors
+            new_LP_set.add(point)
+            new_LP_set.update(vc)
+        else: # If the point is EMPTY
+            # Check its neighbors
+            for point_vc in vc:
+                # If a neighbor is FULL
+                if combination_function_on_R(point_vc, evolution) == FULL:
+                    # The current point becomes FULL
+                    addVectorialMap([{'id': FULL, 'points': [(i,j)]}], new_state)
+                    
+                    # The neighbor that caused the change, and its neighbors, become active
+                    new_LP_set.add(point_vc)
+                    new_LP_set.update(get_vc_R([point_vc], max_dim))
+                    break # Move to the next point in `points`
+                    
+    return list(new_LP_set), new_state
 
 def event_scheduling_on_R():
     """
@@ -704,46 +704,42 @@ def event_scheduling_on_R():
         tuple: A tuple containing three lists:
             - propagationEvolution: A list of states representing the evolution of the propagation.
     """
-    folder_path = './'
-    # Auxiliary functions to obtain the information of the layers from files (IDRISI 32 format).
-    #defining the size for the layers, the same for all to simplify
-    size= (100,100)
-
-    
-    # Reading the propagation starting point
+    # Read initial propagation data
     fileEvolution = 'simple.vec'
     polygonsPropagation = read_idrisi_vector_file(fileEvolution)
+    max_dim = [100, 100]
 
-    max_dim = [100,100]
-    LP = []
-    
+    # Initialize the list of active points (nucleous) from the initial polygon points
+    initial_points = []
     for polygon in polygonsPropagation:
-        polygon_id = polygon['id']
-        points = polygon['points']
-        for (x, y) in points:
-            ini_point = (x, y)
-            #Adding the initial point we change.
-            LP.append(ini_point)
-            #Also adding the neighbourhoods of this point.
-            LP.extend([point for point in get_vc(ini_point, max_dim)])
+        initial_points.extend(polygon['points'])
     
-    # Variable that will contain all the states we define on the execution of the model.
+    # The initial nucleous is the set of starting points
+    nucleous = get_nc_Z(initial_points, [])
+    
+    # The initial vicinity
+    vicinity = get_vc_R(nucleous, max_dim)
+    
+    # The event list for the first step is the union of the nucleous and its vicinity
+    event_list = list(set(nucleous) | set(vicinity))
+
+    # Variable that will contain all the states of the model's execution.
     propagationEvolution = [polygonsPropagation]
 
-    # Number of steeps to execute the evolution function
+    # Number of steps to execute the evolution function
     n_steps = 100
 
     for step in range(n_steps):
-        LP_rep = []
-        LP_new = []
         new_state = propagationEvolution[-1].copy()
-
-        for point in LP:
-            LP_new, new_state = evolution_function_on_R(point, propagationEvolution[-1], new_state, step, n_steps)
-            [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
-
-        LP = []
-        [LP.append(elemento) for elemento in LP_rep if elemento not in LP]
+        
+        # The points to process in this step are the ones in the event list
+        points_to_process = event_list
+        
+        # Calculate the new state and the next set of points to check
+        LP_new, new_state = evolution_function_on_R(points_to_process, propagationEvolution[-1], new_state)
+        
+        # The new event list is the new nucleous
+        event_list = LP_new
 
         # Aplanar new_state si es lista de listas
         flat_new_state = []
@@ -761,51 +757,86 @@ def event_scheduling_on_R():
 #m:n-CAk main functions
 ##############################################################
 
-def get_vc(point, max_dim):
+def get_vc_Z(points, max_dim):
     """
-    Vicinity function. Get the valid coordinates (Moore neighbourhood) adjacent to a given point.
+    Vicinity function. Given a list of points, returns the union of their Moore neighborhoods (8 neighbors, excluding the center), avoiding duplicates.
     Args:
-        point (tuple): (x, y)
+        points (list of tuples): list of (x, y)
         max_dim (tuple): (max_x, max_y)
     Returns:
-        list: List of (x, y) tuples
+        list: List of (x, y) tuples (vicinity)
     """
-    x, y = point
     max_x, max_y = max_dim
-    vc = []
-    if x > 0: vc.append((x-1, y))
-    if x < max_x - 1: vc.append((x+1, y))
-    if y > 0: vc.append((x, y-1))
-    if y < max_y - 1: vc.append((x, y+1))
-    return vc
+    points_set = set(points)
+    vicinity = []
+    for x, y in points:
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0:
+                    continue  # Exclude the center
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < max_x and 0 <= ny < max_y:
+                    neighbor = (nx, ny)
+                    if neighbor not in points_set:
+                        vicinity.append(neighbor)
+    # Remove duplicates
+    vicinity = list(set(vicinity))
+    return vicinity
 
-def get_nc(point):
+def get_vc_R(points, max_dim):
     """
-    Nucleous function. Returns the input point without any modifications as a nucleous.
-    The same for Z^2 and R^2 in this example.
-    
+    Vicinity function. Given a list of points, returns the union of their Moore neighborhoods (8 neighbors, excluding the center), avoiding duplicates.
     Args:
-    point (any): The input point to be returned.
-
+        points (list of tuples): list of (x, y)
+        max_dim (tuple): (max_x, max_y)
     Returns:
-    any: The same input point as nucleous.
+        list: List of (x, y) tuples (vicinity)
     """
-    return point
+    max_x, max_y = max_dim
+    points_set = set(points)
+    vicinity = []
+    for x, y in points:
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0:
+                    continue  # Exclude the center
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < max_x and 0 <= ny < max_y:
+                    neighbor = (nx, ny)
+                    if neighbor not in points_set:
+                        vicinity.append(neighbor)
+    # Remove duplicates
+    vicinity = list(set(vicinity))
+    return vicinity
 
-def set_nc(point, layer, value):
+
+def get_nc_Z(prev_nucleous, last_vicinity):
     """
-    Nucleous function. Sets the value for the nucleous.
-    The same for Z^2 and R^2 in this example.
-
+    Nucleous function for the discrete case (Z^2).
+    Given the last vicinity (list of points) and the previous nucleous (list of points),
+    returns the union of both as the new nucleous, deduplicated.
     Args:
-    point (any): The input point to be returned.
-
+        last_vicinity (list of tuples): The last computed vicinity points.
+        prev_nucleous (list of tuples): The nucleous points from the previous iteration.
     Returns:
-    any: The same input point as nucleous.
+        list: List of (x, y) tuples representing the new nucleous (deduplicated).
+    """
+    return list(set(last_vicinity) | set(prev_nucleous))
+
+def get_nc_R(point, prev_evolution, radius=0.5):
+    """
+    Nucleous function for the continuous case (R^2). Returns the Moore neighborhood (continuous) of the point in the previous iteration, excluding the center.
+    Args:
+        point (tuple): (x, y)
+        prev_evolution (list): The previous evolution state (list of polygons/points).
+        radius (float): Neighborhood radius.
+    Returns:
+        list: List of (x, y) tuples in the previous iteration's neighborhood (excluding the center).
     """
     x, y = point
-    layer[x, y] = value
-    return point
+    nc = []
+
+    return nc
 
 def combination_function_on_R(point, layer):
     """
@@ -827,46 +858,6 @@ def combination_function_on_Z(point, layer):
     x, y = point
     return layer[y, x]
     #return point
-
-def get_vortex_vc_Z(center, point, max_dim, radius=1, dtheta=0.2, n_points=8):
-    """
-    Devuelve las celdas de la vecindad de Moore a distancia 'radius' del punto.
-    Si radius < 1, devuelve las celdas a radio 1 (vecindad Moore estándar).
-    """
-    x, y = point
-    max_x, max_y = max_dim
-    vc = [(x, y)]  # Incluye el núcleo
-
-    r = int(round(radius))
-    if r < 1:
-        r = 1
-
-    for dx in range(-r, r+1):
-        for dy in range(-r, r+1):
-            if max(abs(dx), abs(dy)) == r:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < max_x and 0 <= ny < max_y:
-                    vc.append((nx, ny))
-    return vc
-
-def get_vortex_vc_R(center, point, radius=0.5, dtheta=0.2, n_points=8):
-    """
-    Devuelve los puntos a distancia menor o igual que 'radius' del punto (Moore continuo).
-    Incluye el núcleo.
-    """
-    x, y = point
-    vc = [(x, y)]  # Incluye el núcleo
-
-    # Genera una malla alrededor del punto (por ejemplo, en un cuadrado de lado 2*ceil(radius)+1)
-    grid_r = int(np.ceil(radius))
-    for dx in np.linspace(-radius, radius, 2*grid_r+1):
-        for dy in np.linspace(-radius, radius, 2*grid_r+1):
-            if dx == 0 and dy == 0:
-                continue
-            dist = np.sqrt(dx**2 + dy**2)
-            if dist <= radius:
-                vc.append((x + dx, y + dy))
-    return vc
 
 def get_vortex_params(point, step, max_steps):
     base_radius = 20    # antes 10
