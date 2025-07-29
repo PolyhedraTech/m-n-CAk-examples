@@ -3,8 +3,10 @@
 # Created on: 2021-06-30
 # Author: Pau Fonseca i Casas
 # Copyright: Pau Fonseca i Casas
-# Description: This script simulates the spread of a simiple propagation using a m:n-CAk cellular automaton model over Z^2 and R^2
-# All the layer share the same coordinate system, therefore, the funcrion, to change the basis is not needed.
+# Description: This script simulates the spread of a propagation using an m:n-CAk cellular automaton model over Z^2 and R^2.
+# All layers share the same coordinate system; therefore, the function to change the basis is not needed.
+# This example uses a nucleus composed of a set of points in the discrete case, and in the continuous case, it can be represented by a set of polygons.
+# Also, the nucleus changes by adding the last vicinity obtained.
 ##############################################################
 
 import sys
@@ -22,6 +24,9 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from shapely.geometry import Polygon, MultiPolygon, Point, LineString
 from shapely.ops import unary_union
 import math
+
+# Global variable to store the maximum radius found
+maxRadius = 0.0
 
 ##############################################################
 #Auxiliary functions to obtain data and to represent the data
@@ -211,13 +216,13 @@ def create_idrisi_raster(polygons, output_filename):
             - 'points' (list): A list of tuples representing the vertices of the polygon.
         output_filename (str): The base name of the output file (without extension).
     """
-    # Dimensiones del raster
+    # Raster dimensions
     width, height = 100, 100
 
-    # Crear una matriz de 100x100 puntos
+    # Create a 100x100 point matrix
     raster = np.zeros((height, width), dtype=int)
 
-    # Iterar sobre cada punto en la matriz
+    # Iterate over each point in the matrix
     for j in range(height):
         for i in range(width):
             point = (i, j)
@@ -225,17 +230,17 @@ def create_idrisi_raster(polygons, output_filename):
             if polygon_id is not None:
                 raster[j, i] = polygon_id
 
-    # Guardar la matriz en un archivo en formato IDRISI
+    # Save the matrix in IDRISI format
     data_filename = f"{output_filename}.img"
     metadata_filename = f"{output_filename}.doc"
 
-    # Guardar el archivo de datos como texto
+    # Save the data file as text
     with open(data_filename, 'w') as data_file:
         for row in raster:
             data_file.write(' '.join(map(str, row)) + '\n')
 
 
-    # Crear el archivo de metadatos
+    # Create the metadata file
     with open(metadata_filename, 'w') as metadata_file:
         metadata_file.write(f"file format : IDRISI Raster A.1\n")
         metadata_file.write(f"file title  : {output_filename}\n")
@@ -261,12 +266,13 @@ def create_idrisi_raster(polygons, output_filename):
         metadata_file.write(f"flag value  : none\n")
         metadata_file.write(f"flag def'n  : none\n")
 
-def results_window(domain, simpleEvolution):
+def results_window(domain, simpleEvolution, vortex_speed_evolution):
     """
     Displays a window with a slider and radio buttons to visualize the evolution over time.
     Parameters:
     domain (str): The domain type, either 'Z' for raster or other for vectorial.
     simpleEvolution (list): A list of matrices or vectors representing the evolution of the propagation over time.
+    vortex_speed_evolution (list): A list of vortex speeds for each step.
     The window contains:
     - A matplotlib figure to display the selected evolution state.
     - A slider to navigate through different frames of the selected evolution.
@@ -281,10 +287,11 @@ def results_window(domain, simpleEvolution):
     # Slider for selecting the matrix
     def on_slider_change(val, layerEvolution):
         frame = int(float(val))
+        title = f'State at Frame {frame}, Vortex Speed: {vortex_speed_evolution[frame]:.2f}'
         if domain == 'Z':
-            plotRaster(ax, layerEvolution[frame], id=0, color='red', title=f'State at Frame {frame}')
+            plotRaster(ax, layerEvolution[frame], id=0, color='red', title=title)
         else:
-            plot_vectorial(ax, layerEvolution[frame], id=0, radius=1, color='red', title=f'State at Frame {frame}')
+            plot_vectorial(ax, layerEvolution[frame], id=0, radius=1, color='red', title=title)
         canvas.draw()
 
     # Label to display the current value of the slider
@@ -302,10 +309,11 @@ def results_window(domain, simpleEvolution):
     def set_simple_evolution():
         slider.config(command=lambda val: on_slider_change(val, simpleEvolution))
         slider_label.config(text="Evolution")
+        title = f'Evolution - Initial State, Vortex Speed: {vortex_speed_evolution[0]:.2f}'
         if domain == 'Z':
-            plotRaster(ax, simpleEvolution[0], id=0, color='red', title='Evolution - Initial State')
+            plotRaster(ax, simpleEvolution[0], id=0, color='red', title=title)
         else:
-            plot_vectorial(ax, simpleEvolution[0], id=0, radius=1, color='red', title='Evolution - Initial State')
+            plot_vectorial(ax, simpleEvolution[0], id=0, radius=1, color='red', title=title)
         slider.set(0)  # Reset slider to the beginning
         canvas.draw()
 
@@ -367,9 +375,14 @@ def animate_layers(layersArray, interval=500, radius=1, color='green', title='No
 ##############################################################
 #m:n-CAk on Z specific functions
 ##############################################################
-def evolution_function_on_Z(points, state, new_state):
+def evolution_function_on_Z(points, state, new_state, ini_point):
     new_LP_set = set()
     max_dim = [100, 100]
+    min_vortex_speed_this_step = 0.0
+
+    # Calculate speed for all active points
+    if points:
+        min_vortex_speed_this_step = min(get_vortex_speed(p, ini_point) for p in points)
 
     for point in points:
         x, y = point
@@ -382,18 +395,20 @@ def evolution_function_on_Z(points, state, new_state):
             for point_vc in vc:
                 x_vc, y_vc = point_vc
                 if state[y_vc, x_vc] == FULL:
-                    new_state[y, x] = FULL
-                    new_LP_set.add(point_vc)
-                    new_LP_set.update(get_vc_Z([point_vc], max_dim))
+                    if get_vortex_speed(point, ini_point) > 10:
+                        new_state[y, x] = FULL
+                        new_LP_set.add(point_vc)
+                        new_LP_set.update(get_vc_Z([point_vc], max_dim))
                     break
-    return list(new_LP_set), new_state
+    return list(new_LP_set), new_state, min_vortex_speed_this_step
 
 def event_scheduling_on_Z():
     """
     Simulates a simple propagation using event scheduling.
     Returns:
-        tuple: A tuple containing three lists:
+        tuple: A tuple containing two lists:
             - simpleEvolution: A list of numpy arrays representing the state of the evolution at each step.
+            - vortex_speed_evolution: A list of floats representing the maximum vortex speed at each step.
     """
     # ... existing code ...
     size = (100, 100)
@@ -416,6 +431,7 @@ def event_scheduling_on_Z():
 
     # Variable that will contain all the states we define on the execution of the model.
     simpleEvolution = [initial_propagation]
+    vortex_speed_evolution = [0.0]
 
     # Number of steps to execute the evolution function
     n_steps = 100
@@ -428,14 +444,15 @@ def event_scheduling_on_Z():
         nucleous = event_list
         
         # Calculate the new state and the next set of points to check
-        LP_new, new_state = evolution_function_on_Z(nucleous, simpleEvolution[-1], new_state)
+        LP_new, new_state, max_vortex_speed = evolution_function_on_Z(nucleous, simpleEvolution[-1], new_state, ini_point)
         
         # The new event list is the new nucleous
         event_list = LP_new
 
         simpleEvolution.append(new_state)
+        vortex_speed_evolution.append(max_vortex_speed)
 
-    return simpleEvolution
+    return simpleEvolution, vortex_speed_evolution
 
 ##############################################################
 #m:n-CAk on R specific functions
@@ -510,28 +527,28 @@ def find_polygon_id(point, polygons):
 
 def addVectorialMap(vectorialMap, layersArray):
     """
-    Adds a vectorial map to the layers array, ensuring no duplicate points.
-    This function checks if the given vectorial map is a single point. If so, it searches for and removes any existing 
+    Adds a vectorial map (polygon) to the layers array, ensuring no duplicate points.
+    This function checks if the given vectorialMap is a single point. If so, it searches for and removes any existing 
     identical point in the layers array. After that, it adds the vectorial map to the layers array if it is not already present.
     Args:
-        vectorialMap (list): A list containing a single dictionary with a 'points' key, which is a list of points.
-        layersArray (list): A list of vectorial maps, where each vectorial map is a list containing a dictionary with a 'points' key.
+        vectorialMap (dict): A dictionary representing a polygon with 'id' and 'points'.
+        layersArray (list): A list of vectorial maps, where each map is a dictionary.
     Returns:
         None
     """
-    # Verificar si vectorialMap es un punto
-    if len(vectorialMap) == 1 and isinstance(vectorialMap[0], dict) and len(vectorialMap[0]['points']) == 1:
-        point_to_add = vectorialMap[0]['points'][0]
+    # Check if vectorialMap is a single point
+    if len(vectorialMap['points']) == 1:
+        point_to_add = vectorialMap['points'][0]
         
-        # Buscar y eliminar el punto en layersArray si existe
+        # Search for and remove the point in layersArray if it exists
         for layer in layersArray:
-            if len(layer) == 1 and isinstance(layer[0], dict) and len(layer[0]['points']) == 1:
-                existing_point = layer[0]['points'][0]
+            if len(layer['points']) == 1:
+                existing_point = layer['points'][0]
                 if existing_point == point_to_add:
                     layersArray.remove(layer)
                     break
     
-    # Añadir el vectorialMap a layersArray
+    # Add the vectorialMap to layersArray
     if vectorialMap not in layersArray:
         layersArray.append(vectorialMap)
 
@@ -555,18 +572,19 @@ def sort_points(points):
     
     return sorted(points, key=angle_from_centroid)
     
-def simplifyVectorialMap(vectorialMap):
+def simplifyVectorialMap(vectorialMap, ini_point):
     """
     Simplifies a vectorial map by merging polygons that are within a certain distance (defined by the vicinity) of each other.
     Args:
         vectorialMap (list): A list of dictionaries, where each dictionary represents a polygon with an 'id' and 'points'.
                              The 'id' is a unique identifier for the polygon, and 'points' is a list of coordinates.
+        ini_point (tuple): The initial point of the simulation, used for distance calculations.
     Returns:
         list: A simplified vectorial map, where polygons that are close to each other are merged. Each element in the 
               returned list is a dictionary with an 'id' and 'points'. The 'points' represent the exterior coordinates 
               of the merged polygons.
     """
-    # Agrupar polígonos por ID
+    # Group polygons by their IDs
     polygons_by_id = {}
     for polygon in vectorialMap:
         poly_id = polygon['id']
@@ -588,42 +606,55 @@ def simplifyVectorialMap(vectorialMap):
     
     simplified_vectorial_map = []
     
-    # Unir polígonos que cumplen con el criterio de distancia
+    # Join polygons with the same ID that are within a certain distance
     for poly_id, polygons in polygons_by_id.items():
         merged_polygons = []
         while polygons:
             base_polygon = polygons.pop(0)
             to_merge = [base_polygon]
             for other_polygon in polygons[:]:
-                if base_polygon.distance(other_polygon) <= 1:
+                if base_polygon.distance(other_polygon) <= 5:
                     to_merge.append(other_polygon)
                     polygons.remove(other_polygon)
             merged_polygon = unary_union(to_merge)
             merged_polygons.append(merged_polygon)
         
-        # Añadir los polígonos unidos al nuevo vectorialMap
+        # Add the merged polygons to the new vectorialMap
         for merged_polygon in merged_polygons:
             if isinstance(merged_polygon, MultiPolygon):
-                for poly in merged_polygon:
-                    simplified_vectorial_map.append({'id': poly_id, 'points': list(poly.exterior.coords)})
+                for poly in merged_polygon.geoms:
+                    points = list(poly.exterior.coords)
+                    if points:
+                        max_dist = max(get_distance(p, ini_point) for p in points)
+                        filtered_points = [p for p in points if get_distance(p, ini_point) >= max_dist]
+                        if filtered_points:
+                            simplified_vectorial_map.append({'id': poly_id, 'points': filtered_points})
             elif isinstance(merged_polygon, Polygon):
-                simplified_vectorial_map.append({'id': poly_id, 'points': list(merged_polygon.exterior.coords)})
+                points = list(merged_polygon.exterior.coords)
+                if points:
+                    max_dist = max(get_distance(p, ini_point) for p in points)
+                    filtered_points = [p for p in points if get_distance(p, ini_point) >= max_dist]
+                    if filtered_points:
+                        simplified_vectorial_map.append({'id': poly_id, 'points': filtered_points})
             elif isinstance(merged_polygon, Point):
                 simplified_vectorial_map.append({'id': poly_id, 'points': [(merged_polygon.x, merged_polygon.y)]})
             else:
-                # Manejar el caso donde merged_polygon es una colección de puntos
+                # Handle the case where merged_polygon is a collection of points
                 points = []
                 for geom in merged_polygon.geoms:
                     if isinstance(geom, Point):
-                        #simplified_vectorial_map.append({'id': poly_id, 'points': [(geom.x, geom.y)]})
                         points.append((geom.x, geom.y))
                     elif isinstance(geom, Polygon):
-                        #simplified_vectorial_map.append({'id': poly_id, 'points': list(geom.exterior.coords)})
                         points.extend(list(geom.exterior.coords))
-                # Create a polygon from the points. To assure not add interior points.
-                points_ext = remove_interior_points(points)
-                points_ext = sort_points(points_ext)
-                simplified_vectorial_map.append({'id': poly_id, 'points': points_ext})
+
+                if points:
+                    # Create a polygon from the points. To assure not add interior points.
+                    points_ext = remove_interior_points(points)
+                    points_ext = sort_points(points_ext)
+                    max_dist = max(get_distance(p, ini_point) for p in points_ext)
+                    filtered_points = [p for p in points_ext if get_distance(p, ini_point) >= max_dist]
+                    if filtered_points:
+                        simplified_vectorial_map.append({'id': poly_id, 'points': filtered_points})
 
     return simplified_vectorial_map
 
@@ -658,8 +689,26 @@ def remove_interior_points(points):
     result = [point for point in points if not is_interior(point, points_set)]
     return result
 
+def get_center(points):
+    """
+    Calculates the centroid of a set of points. If there is only one point, it returns the point itself.
+    Args:
+        points (list of tuples): A list of (x, y) coordinates.
+    Returns:
+        tuple: The (x, y) coordinates of the centroid, or the point itself if it's a single point, or None if the list is empty.
+    """
+    if not points:
+        return None
+    if len(points) == 1:
+        return points[0]
+    
+    sum_x = sum(p[0] for p in points)
+    sum_y = sum(p[1] for p in points)
+    count = len(points)
+    return (sum_x / count, sum_y / count)
+
 #m:n-CAk on R functions
-def evolution_function_on_R(points, evolution, new_state):
+def evolution_function_on_R(points, evolution, new_state, ini_point):
     """
     Simulates the evolution of a simple propagation on a grid based on the cell state.
     Args:
@@ -667,14 +716,19 @@ def evolution_function_on_R(points, evolution, new_state):
         evolution (list): The current state of the evolution grid.
         new_state (list): The updated state of the evolution grid.
     Returns:
-        tuple: (new_LP, new_state)
+        tuple: (new_LP, new_state, min_vortex_speed)
     """
     new_LP_set = set()
     max_dim = [100, 100]
+    min_vortex_speed_this_step = 0.0
+
+    # Calculate speed for all active points
+    if points:
+        min_vortex_speed_this_step = min(get_vortex_speed(p, ini_point) for p in points)
 
     for point in points:
         i, j = point
-        vc = get_vc_R([point], max_dim)
+        vc = get_vc_R([point], max_dim, ini_point)
         
         # Check current point's state
         if combination_function_on_R(point, evolution) == FULL:
@@ -686,23 +740,46 @@ def evolution_function_on_R(points, evolution, new_state):
             for point_vc in vc:
                 # If a neighbor is FULL
                 if combination_function_on_R(point_vc, evolution) == FULL:
-                    # The current point becomes FULL
-                    addVectorialMap([{'id': FULL, 'points': [(i,j)]}], new_state)
-                    
-                    # The neighbor that caused the change, and its neighbors, become active
-                    new_LP_set.add(point_vc)
-                    new_LP_set.update(get_vc_R([point_vc], max_dim))
-                    break # Move to the next point in `points`
-                    
-    return list(new_LP_set), new_state
+                    if get_vortex_speed(point, ini_point) > 10:
+                        # The current point becomes FULL
+                        addVectorialMap({'id': FULL, 'points': [(i,j)]}, new_state)
+                        
+                        # The neighbor that caused the change, and its neighbors, become active
+                        new_LP_set.add(point_vc)
+                        new_LP_set.update(get_vc_R([point_vc], max_dim, ini_point))
+                        break # Move to the next point in `points`
+    
+    #we must do the same for the new_state, remove the points that have a distance that is smaller to the maximum distance found between any point and ini_point
+    #first we calculate the max_distance, but now for the points in new_state
+    all_points_in_new_state = [point for polygon in new_state for point in polygon['points']]
+    if not all_points_in_new_state:
+        max_distance = 0
+    else:
+        max_distance = max(get_distance(ini_point, p) for p in all_points_in_new_state)
+    
+    # Filter out polygons in new_state that have any point within max_distance from ini_point
+    new_state = [polygon for polygon in new_state if any(get_distance(p, ini_point) == max_distance for p in polygon['points'])]
+
+    #Prior to returning, we need to remove the points that have a distance that is smaller to the maximum distance found between any point and ini_point
+    # Calculate the maximum distance from ini_point to any point in new_LP_set
+    #First we chack if theres any point in new_LP_set, since the expansion will end due to speed is small.
+    if not new_LP_set:
+        return [], new_state, min_vortex_speed_this_step
+    max_distance_lp = max(get_distance(ini_point, p) for p in new_LP_set)
+
+    new_LP_set = {p for p in new_LP_set if get_distance(p, ini_point) >= max_distance_lp}
+
+
+    return list(new_LP_set), new_state, min_vortex_speed_this_step
 
 def event_scheduling_on_R():
     """
     Simulates a simple evolution over a specified number of steps.
     This function reads initial conditions from IDRISI vector files for propagation.
     Returns:
-        tuple: A tuple containing three lists:
+        tuple: A tuple containing two lists:
             - propagationEvolution: A list of states representing the evolution of the propagation.
+            - vortex_speed_evolution: A list of floats representing the maximum vortex speed at each step.
     """
     # Read initial propagation data
     fileEvolution = 'simple.vec'
@@ -715,43 +792,42 @@ def event_scheduling_on_R():
         initial_points.extend(polygon['points'])
     
     # The initial nucleous is the set of starting points
-    nucleous = get_nc_Z(initial_points, [])
-    
+    nucleous = get_nc_R(initial_points, [])
+    ini_point = get_center(nucleous)
+
     # The initial vicinity
-    vicinity = get_vc_R(nucleous, max_dim)
+    vicinity = get_vc_R(nucleous, max_dim, ini_point)
     
     # The event list for the first step is the union of the nucleous and its vicinity
     event_list = list(set(nucleous) | set(vicinity))
 
     # Variable that will contain all the states of the model's execution.
     propagationEvolution = [polygonsPropagation]
+    vortex_speed_evolution = [0.0]
 
     # Number of steps to execute the evolution function
     n_steps = 100
 
     for step in range(n_steps):
-        new_state = propagationEvolution[-1].copy()
+        # new_state must be initialized empty for each iteration
+        new_state = []
         
         # The points to process in this step are the ones in the event list
         points_to_process = event_list
         
         # Calculate the new state and the next set of points to check
-        LP_new, new_state = evolution_function_on_R(points_to_process, propagationEvolution[-1], new_state)
+        LP_new, new_polygons, max_vortex_speed = evolution_function_on_R(points_to_process, propagationEvolution[-1], new_state, ini_point)
         
-        # The new event list is the new nucleous
         event_list = LP_new
 
-        # Aplanar new_state si es lista de listas
-        flat_new_state = []
-        for item in new_state:
-            if isinstance(item, list):
-                flat_new_state.extend(item)
-            else:
-                flat_new_state.append(item)
+        # Combine the previous state with the new polygons generated
+        combined_state = propagationEvolution[-1] + new_polygons
+        
+        # Add the new state to the evolution list
+        propagationEvolution.append(simplifyVectorialMap(combined_state, ini_point))
+        vortex_speed_evolution.append(max_vortex_speed)
 
-        propagationEvolution.append(simplifyVectorialMap(flat_new_state))
-
-    return propagationEvolution
+    return propagationEvolution, vortex_speed_evolution
 
 ##############################################################
 #m:n-CAk main functions
@@ -783,31 +859,100 @@ def get_vc_Z(points, max_dim):
     vicinity = list(set(vicinity))
     return vicinity
 
-def get_vc_R(points, max_dim):
+def get_distance(point1, point2):
+    """Calculates the Euclidean distance between two points."""
+    x1, y1 = point1
+    x2, y2 = point2
+    #Rounded to the first decimal to avoid problems with the calculation of the distance
+    return round(math.sqrt((x1 - x2)**2 + (y1 - y2)**2), 1)
+
+def get_cardinal_points(point, radius=1.0, variablePoints=True, point_distance=0.3):
     """
-    Vicinity function. Given a list of points, returns the union of their Moore neighborhoods (8 neighbors, excluding the center), avoiding duplicates.
+    Given a point, returns points on the perimeter of a circle at a given radius.
+
+    If variablePoints is False (default), it returns 8 cardinal and diagonal points.
+    If variablePoints is True, it generates a variable number of points based on the
+    circle's perimeter and the desired distance between points.
+
+    Args:
+        point (tuple): (x, y) coordinates of the center.
+        radius (float): The radius of the circle.
+        variablePoints (bool): If True, generate points based on point_distance.
+        point_distance (float): The desired distance between points on the perimeter. A small value (e.g., 0.5) is recommended for better resolution. Buet small values impacts deeply on the performance.
+
+    Returns:
+        list: A list of tuples representing the points on the circle.
+    """
+    x, y = point
+    
+    if variablePoints:
+        points = []
+        perimeter = 2 * math.pi * radius
+        num_points = int(perimeter / point_distance)
+        if num_points == 0:
+            return []
+            
+        for i in range(num_points):
+            angle = (i / num_points) * 2 * math.pi
+            px = x + radius * math.cos(angle)
+            py = y + radius * math.sin(angle)
+            points.append((px, py))
+        return points
+    else:
+        diag_dist = radius / math.sqrt(2)
+        return [
+            # Cardinal points
+            (x, y + radius),
+            (x, y - radius),
+            (x - radius, y),
+            (x + radius, y),
+            # Diagonal points
+            (x + diag_dist, y + diag_dist),
+            (x - diag_dist, y + diag_dist),
+            (x - diag_dist, y - diag_dist),
+            (x + diag_dist, y - diag_dist)
+        ]
+
+def get_vc_R(points, max_dim, ini_point):
+    """
+    Vicinity function for the continuous case (R^2).
+    For each point, it generates a circle of neighbors. The radius of the circle is the maximum distance
+    found between any point in the input list and the ini_point, and this value is updated globally.
     Args:
         points (list of tuples): list of (x, y)
         max_dim (tuple): (max_x, max_y)
+        ini_point (tuple): The origin point of the simulation for distance comparison.
     Returns:
-        list: List of (x, y) tuples (vicinity)
+        list: List of (x, y) tuples (vicinity), without duplicates.
     """
+    global maxRadius
     max_x, max_y = max_dim
+    vicinity_set = set()
+
+    if not points:
+        return []
+    
+    # Calculate the maximum distance from ini_point to any point in the input list.
+    current_max_radius = max(get_distance(p, ini_point) for p in points) if points else 0
+
+    # Update the global maxRadius if the current one is larger
+    if current_max_radius > maxRadius:
+        maxRadius = current_max_radius
+
+    radius_to_use = maxRadius if maxRadius > 0 else 1.0
+    
+    for point in points:
+        #neighbors = get_cardinal_points(point, radius=radius_to_use)
+        neighbors = get_cardinal_points(point)
+        for neighbor in neighbors:
+            nx, ny = neighbor
+            if 0 <= nx < max_x and 0 <= ny < max_y:
+                vicinity_set.add(neighbor)
+
+    # Ensure the original points are not in their own vicinity
     points_set = set(points)
-    vicinity = []
-    for x, y in points:
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                if dx == 0 and dy == 0:
-                    continue  # Exclude the center
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < max_x and 0 <= ny < max_y:
-                    neighbor = (nx, ny)
-                    if neighbor not in points_set:
-                        vicinity.append(neighbor)
-    # Remove duplicates
-    vicinity = list(set(vicinity))
-    return vicinity
+    
+    return list(vicinity_set - points_set)
 
 
 def get_nc_Z(prev_nucleous, last_vicinity):
@@ -823,20 +968,18 @@ def get_nc_Z(prev_nucleous, last_vicinity):
     """
     return list(set(last_vicinity) | set(prev_nucleous))
 
-def get_nc_R(point, prev_evolution, radius=0.5):
+def get_nc_R(prev_nucleous, last_vicinity):
     """
     Nucleous function for the continuous case (R^2). Returns the Moore neighborhood (continuous) of the point in the previous iteration, excluding the center.
+    Given the last vicinity (list of points) and the previous nucleous (list of points),
+    returns the union of both as the new nucleous, deduplicated.
     Args:
-        point (tuple): (x, y)
-        prev_evolution (list): The previous evolution state (list of polygons/points).
-        radius (float): Neighborhood radius.
+        last_vicinity (list of tuples): The last computed vicinity points.
+        prev_nucleous (list of tuples): The nucleous points from the previous iteration.
     Returns:
-        list: List of (x, y) tuples in the previous iteration's neighborhood (excluding the center).
+        list: List of (x, y) tuples representing the new nucleous (deduplicated).
     """
-    x, y = point
-    nc = []
-
-    return nc
+    return list(set(last_vicinity) | set(prev_nucleous))
 
 def combination_function_on_R(point, layer):
     """
@@ -859,12 +1002,45 @@ def combination_function_on_Z(point, layer):
     return layer[y, x]
     #return point
 
-def get_vortex_params(point, step, max_steps):
-    base_radius = 20    # antes 10
-    base_dtheta = 0.5   # antes 0.2
-    radius = base_radius + step * (20 / max_steps)
-    dtheta = base_dtheta * (1 - step / max_steps)
-    return radius, dtheta
+def get_vortex_speed(point, origen):
+    """
+    Calculates the tangential speed of a point in a Rankine vortex.
+    Args:
+        point (tuple): (x, y) coordinates of the point.
+        origen (tuple): (x, y) coordinates of the vortex center.
+    Returns:
+        float: The tangential speed of the point.
+    """
+    gamma, radius = get_vortex_params()
+    
+    x1, y1 = point
+    x2, y2 = origen
+    r = math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+
+    if r == 0:
+        # If the point is at the center of the vortex, return a very high speed (or handle as needed)
+        # This is a special case, as the speed at the center of a Rankine vortex is theoretically infinite.
+        # but we return a large value to avoid division by zero.
+        return 10000.0
+    
+    # Inside the vortex core (solid-body rotation)
+    if r <= radius:
+        return (gamma * r) / (2 * math.pi * radius**2)
+    # Outside the vortex core (potential vortex)
+    else:
+        return gamma / (2 * math.pi * r)
+
+def get_vortex_params():
+    """
+    Defines the parameters for the Rankine vortex model.
+    Returns:
+        tuple: (gamma, radius)
+            - gamma (float): The circulation of the vortex.
+            - radius (float): The radius of the vortex core.
+    """
+    gamma = 1000.0  # Circulation constant
+    radius = 1.0   # Radius of the vortex core
+    return gamma, radius
 
 ##############################################################
 #Main
@@ -884,8 +1060,8 @@ if __name__ == "__main__":
     else:
 
         if domain == 'Z':
-            simpleEvolution = event_scheduling_on_Z()
+            simpleEvolution, vortex_speed_evolution = event_scheduling_on_Z()
         else:
-            simpleEvolution = event_scheduling_on_R()
+            simpleEvolution, vortex_speed_evolution = event_scheduling_on_R()
 
-        results_window(domain, simpleEvolution)
+        results_window(domain, simpleEvolution, vortex_speed_evolution)

@@ -33,6 +33,10 @@ This project demonstrates the capabilities of the m:n-CAk cellular automaton ove
 - **wind.doc**: A raster file containing the description of the wind layer.
 - **wind.img**: A raster file containing the data of the wind layer.
 
+### Simple Layer Vector Files
+- **simple.vdc**: A vector file containing the description of the simple layer.
+- **simple.vec**: A vector file containing the data of the simple layer.
+
 ### Other Files
 - **README.txt**: This file provides an overview of the project and explanations for the different files included.
 
