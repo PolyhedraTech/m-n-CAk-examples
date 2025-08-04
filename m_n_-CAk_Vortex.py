@@ -388,18 +388,13 @@ def evolution_function_on_Z(points, state, new_state, ini_point):
         x, y = point
         vc = get_vc_Z([point], max_dim)
 
-        if combination_function_on_Z(point, state) == FULL:
-            new_LP_set.add(point)
-            new_LP_set.update(vc)
-        elif state[y, x] == EMPTY:
-            for point_vc in vc:
-                x_vc, y_vc = point_vc
-                if state[y_vc, x_vc] == FULL:
-                    if get_vortex_speed(point, ini_point) > 10:
-                        new_state[y, x] = FULL
-                        new_LP_set.add(point_vc)
-                        new_LP_set.update(get_vc_Z([point_vc], max_dim))
-                    break
+        for point_vc in vc:
+            x_vc, y_vc = point_vc
+            if get_vortex_speed(point, ini_point) > 10:
+                new_state[y, x] = FULL
+                new_LP_set.add(point_vc)
+                new_LP_set.update(get_vc_Z([point_vc], max_dim))
+
     return list(new_LP_set), new_state, min_vortex_speed_this_step
 
 def event_scheduling_on_Z():
@@ -730,24 +725,15 @@ def evolution_function_on_R(points, evolution, new_state, ini_point):
         i, j = point
         vc = get_vc_R([point], max_dim, ini_point)
         
-        # Check current point's state
-        if combination_function_on_R(point, evolution) == FULL:
-            # If the point is already FULL, it remains active, and so do its neighbors
-            new_LP_set.add(point)
-            new_LP_set.update(vc)
-        else: # If the point is EMPTY
-            # Check its neighbors
-            for point_vc in vc:
-                # If a neighbor is FULL
-                if combination_function_on_R(point_vc, evolution) == FULL:
-                    if get_vortex_speed(point, ini_point) > 10:
-                        # The current point becomes FULL
-                        addVectorialMap({'id': FULL, 'points': [(i,j)]}, new_state)
-                        
-                        # The neighbor that caused the change, and its neighbors, become active
-                        new_LP_set.add(point_vc)
-                        new_LP_set.update(get_vc_R([point_vc], max_dim, ini_point))
-                        break # Move to the next point in `points`
+        # Check its neighbors
+        for point_vc in vc:
+            if get_vortex_speed(point, ini_point) > 10:
+                # The current point becomes FULL
+                addVectorialMap({'id': FULL, 'points': [(i,j)]}, new_state)
+                # The neighbor that caused the change, and its neighbors, become active
+                new_LP_set.add(point_vc)
+                new_LP_set.update(get_vc_R([point_vc], max_dim, ini_point))
+
     
     #we must do the same for the new_state, remove the points that have a distance that is smaller to the maximum distance found between any point and ini_point
     #first we calculate the max_distance, but now for the points in new_state
