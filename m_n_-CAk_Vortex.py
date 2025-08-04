@@ -261,23 +261,32 @@ def create_idrisi_raster(polygons, output_filename):
         metadata_file.write(f"flag value  : none\n")
         metadata_file.write(f"flag def'n  : none\n")
 
-def results_window(domain, simpleEvolution, vortex_speed_evolution):
+def results_window(domain, simpleEvolution, vortex_speed_evolution, ini_point_param, showRankine=False):
     """
     Displays a window with a slider and radio buttons to visualize the evolution over time.
     Parameters:
     domain (str): The domain type, either 'Z' for raster or other for vectorial.
     simpleEvolution (list): A list of matrices or vectors representing the evolution of the propagation over time.
     vortex_speed_evolution (list): A list of vortex speeds for each step.
+    ini_point_param (tuple): The initial point coordinates (x, y) for the vortex center.
     The window contains:
     - A matplotlib figure to display the selected evolution state.
     - A slider to navigate through different frames of the selected evolution.
     - Radio buttons to switch between layers.
+    - A green circle showing the theoretical Rankine vortex maximum propagation radius.
     """
     root = tk.Tk()
     root.title("Select Action")
     fig, ax = plt.subplots()
     canvas = FigureCanvasTkAgg(fig, master=root)
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    
+    # Calculate theoretical vortex parameters for the circle overlay
+    ini_point_viz = ini_point_param  # Use the passed parameter directly
+    
+    # Calculate theoretical threshold radius for the green circle
+    gamma, core_radius = get_vortex_params()
+    theoretical_threshold_radius = rankine_find_radius_for_speed(10.0, gamma, core_radius)
  
     # Slider for selecting the matrix
     def on_slider_change(val, layerEvolution):
@@ -287,6 +296,18 @@ def results_window(domain, simpleEvolution, vortex_speed_evolution):
             plotRaster(ax, layerEvolution[frame], id=0, color='red', title=title)
         else:
             plot_vectorial(ax, layerEvolution[frame], id=0, radius=1, color='red', title=title)
+        
+        # Add theoretical Rankine vortex circle overlay only if showRankine is True
+        if showRankine:
+            theoretical_circle = plt.Circle(ini_point_viz, theoretical_threshold_radius, 
+                                          color='green', fill=False, linewidth=2, 
+                                          linestyle='--', alpha=0.8, 
+                                          label=f'Theoretical Rankine Vortex (r={theoretical_threshold_radius:.1f})')
+            ax.add_patch(theoretical_circle)
+            
+            # Add legend only if circle is shown
+            ax.legend(loc='upper right')
+        
         canvas.draw()
 
     # Label to display the current value of the slider
@@ -309,6 +330,18 @@ def results_window(domain, simpleEvolution, vortex_speed_evolution):
             plotRaster(ax, simpleEvolution[0], id=0, color='red', title=title)
         else:
             plot_vectorial(ax, simpleEvolution[0], id=0, radius=1, color='red', title=title)
+        
+        # Add theoretical Rankine vortex circle overlay only if showRankine is True
+        if showRankine:
+            theoretical_circle = plt.Circle(ini_point_viz, theoretical_threshold_radius, 
+                                          color='green', fill=False, linewidth=2, 
+                                          linestyle='--', alpha=0.8,
+                                          label=f'Theoretical Rankine Vortex (r={theoretical_threshold_radius:.1f})')
+            ax.add_patch(theoretical_circle)
+            
+            # Add legend only if circle is shown
+            ax.legend(loc='upper right')
+        
         slider.set(0)  # Reset slider to the beginning
         canvas.draw()
 
@@ -380,12 +413,13 @@ def evolution_function_on_Z(points, state, new_state, ini_point):
         min_vortex_speed_this_step = min(get_vortex_speed(p, ini_point) for p in points)
 
     for point in points:
-        x, y = point
         vc = get_vc_Z([point], max_dim)
 
         for point_vc in vc:
-            x_vc, y_vc = point_vc
-            if get_vortex_speed(point, ini_point) > 10:
+            x, y = point_vc
+            # Check if the point speed is greater than the threshold
+            if get_vortex_speed(point_vc, ini_point) > 10:
+                # The the point is in movement, we change its state
                 new_state[y, x] = FULL
                 new_LP_set.add(point_vc)
                 new_LP_set.update(get_vc_Z([point_vc], max_dim))
@@ -423,6 +457,11 @@ def event_scheduling_on_Z():
     simpleEvolution = [initial_propagation]
     vortex_speed_evolution = [0.0]
 
+   # The max radious from all the iterations
+    current_max_radius = 0.0
+    # The max radious of the propagation from the event list
+    step_max_radius = 0.0
+
     # Number of steps to execute the evolution function
     n_steps = 100
 
@@ -430,16 +469,23 @@ def event_scheduling_on_Z():
     for step in range(n_steps):
         new_state = simpleEvolution[-1].copy()
 
+        # Calculate radius for this step based on current event list
+        if event_list:
+            distances = [get_distance(p, ini_point) for p in event_list]
+            step_max_radius = max(distances)
+       
+        if current_max_radius >= step_max_radius: 
+            # If the radius has not changed, we can stop the evolution
+            break
+        else:
+            current_max_radius = step_max_radius
+
         # The new nucleous is the entire set of points that changed state in the last step
         nucleous = event_list
         
         # Calculate the new state and the next set of points to check
         LP_new, new_state, max_vortex_speed = evolution_function_on_Z(nucleous, simpleEvolution[-1], new_state, ini_point)
         
-        if event_list == LP_new:
-            # If the event list does not change, we can stop the evolution
-            break
-
         # The new event list is the new nucleous
         event_list = LP_new
 
@@ -683,6 +729,66 @@ def remove_interior_points(points):
     result = [point for point in points if not is_interior(point, points_set)]
     return result
 
+def calculate_exact_boundary_r_domain(filled_points):
+    """
+    Calculate the exact boundary perimeter and area for R domain by creating 
+    a more accurate representation of the filled region.
+    
+    Args:
+        filled_points (list): List of (x, y) points that are filled in the simulation
+        
+    Returns:
+        tuple: (area, perimeter) calculated from the exact boundary
+    """
+    if not filled_points:
+        return 0, 0
+        
+    if len(filled_points) == 1:
+        return 0, 0  # Single point has no area or perimeter
+        
+    if len(filled_points) == 2:
+        # Line segment
+        p1, p2 = filled_points
+        length = math.sqrt((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)
+        return 0, 2 * length
+    
+    # For multiple points, create a more accurate boundary
+    # Remove duplicates
+    unique_points = list(set(filled_points))
+    
+    if len(unique_points) < 3:
+        return calculate_exact_boundary_r_domain(unique_points)
+    
+    # Sort points to create a proper boundary polygon
+    # Find centroid
+    cx = sum(p[0] for p in unique_points) / len(unique_points)
+    cy = sum(p[1] for p in unique_points) / len(unique_points)
+    
+    # Sort by angle from centroid to create a proper polygon
+    def angle_from_center(point):
+        return math.atan2(point[1] - cy, point[0] - cx)
+    
+    sorted_points = sorted(unique_points, key=angle_from_center)
+    
+    # Calculate exact area using shoelace formula
+    n = len(sorted_points)
+    area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        area += sorted_points[i][0] * sorted_points[j][1]
+        area -= sorted_points[j][0] * sorted_points[i][1]
+    area = abs(area) / 2.0
+    
+    # Calculate exact perimeter by summing edge lengths
+    perimeter = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        dx = sorted_points[j][0] - sorted_points[i][0]
+        dy = sorted_points[j][1] - sorted_points[i][1]
+        perimeter += math.sqrt(dx*dx + dy*dy)
+    
+    return area, perimeter
+
 def get_center(points):
     """
     Calculates the centroid of a set of points. If there is only one point, it returns the point itself.
@@ -702,7 +808,7 @@ def get_center(points):
     return (sum_x / count, sum_y / count)
 
 #m:n-CAk on R functions
-def evolution_function_on_R(points, evolution, new_state, ini_point, step_radius):
+def evolution_function_on_R(points, evolution, new_state, ini_point):
     """
     Simulates the evolution of a simple propagation on vectorial data based on polygon states.
     Args:
@@ -710,7 +816,6 @@ def evolution_function_on_R(points, evolution, new_state, ini_point, step_radius
         evolution (list): The current state of the evolution as a list of polygons.
         new_state (list): The updated state of the evolution as a list of vectorial maps.
         ini_point (tuple): The initial point of the simulation.
-        step_radius (float): The radius to use for vicinity calculations in this step.
     Returns:
         tuple: (new_LP, new_state, min_vortex_speed)
     """
@@ -723,18 +828,17 @@ def evolution_function_on_R(points, evolution, new_state, ini_point, step_radius
         min_vortex_speed_this_step = min(get_vortex_speed(p, ini_point) for p in points)
 
     for point in points:
-        i, j = point
         vc = get_vc_R([point], max_dim)
-        
         # Check its neighbors
         for point_vc in vc:
-            if get_vortex_speed(point, ini_point) > 10:
+            i, j = point_vc
+            # If the point reaches the speed threshold, we update the new_state
+            if get_vortex_speed(point_vc, ini_point) > 10:
                 # The current point becomes FULL
                 addVectorialMap({'id': FULL, 'points': [(i,j)]}, new_state)
                 # The neighbor that caused the change, and its neighbors, become active
                 new_LP_set.add(point_vc)
                 new_LP_set.update(get_vc_R([point_vc], max_dim))
-
     
     #we must do the same for the new_state, remove the points that have a distance that is smaller to the maximum distance found between any point and ini_point
     #first we calculate the max_distance, but now for the points in new_state
@@ -782,8 +886,10 @@ def event_scheduling_on_R():
     nucleous = get_nc_R(initial_points, [])
     ini_point = get_center(nucleous)
 
-    # Initialize local radius tracking
+    # The max radious from all the iterations
     current_max_radius = 0.0
+    # The max radious of the propagation from the event list
+    step_max_radius = 0.0
 
     # The initial vicinity
     vicinity = get_vc_R(nucleous, max_dim)
@@ -806,19 +912,18 @@ def event_scheduling_on_R():
         if event_list:
             distances = [get_distance(p, ini_point) for p in event_list]
             step_max_radius = max(distances)
-            current_max_radius = max(current_max_radius, step_max_radius)
-        
-        step_radius = current_max_radius if current_max_radius > 0 else 1.0
-        
+       
+        if current_max_radius >= step_max_radius: 
+            # If the radius has not changed, we can stop the evolution
+            break
+        else:
+            current_max_radius = step_max_radius
+
         # The points to process in this step are the ones in the event list
         points_to_process = event_list
         
         # Calculate the new state and the next set of points to check
-        LP_new, new_polygons, max_vortex_speed = evolution_function_on_R(points_to_process, propagationEvolution[-1], new_state, ini_point, step_radius)
-
-        if event_list == LP_new:
-            # If the event list does not change, we can stop the evolution
-            break
+        LP_new, new_polygons, max_vortex_speed = evolution_function_on_R(points_to_process, propagationEvolution[-1], new_state, ini_point)
 
         event_list = LP_new
 
@@ -868,7 +973,7 @@ def get_distance(point1, point2):
     #Rounded to the first decimal to avoid problems with the calculation of the distance
     return round(math.sqrt((x1 - x2)**2 + (y1 - y2)**2), 1)
 
-def get_cardinal_points(point, radius=1.0, variablePoints=True, point_distance=0.3):
+def get_cardinal_points(point, radius=1.0, variablePoints=True, point_distance=0.5):
     """
     Given a point, returns points on the perimeter of a circle at a given radius.
 
@@ -1155,74 +1260,41 @@ if __name__ == "__main__":
         
         # Calculate simulation results for comparison
         if domain == 'Z':
-            # For Z domain, count filled cells and estimate perimeter/area
+            # For Z domain, calculate exact perimeter and area from simulation data
             final_state = simpleEvolution[-1]
             filled_cells = np.sum(final_state == FULL)
-            simulation_area = filled_cells  # Each cell = 1 unit²
+            simulation_area = filled_cells  # Each cell = 1 unit² (exact area)
             
-            # Better perimeter calculation: count boundary cells (cells with at least one empty neighbor)
-            boundary_cells = 0
+            # Exact perimeter calculation: count edge segments between FULL and EMPTY cells
+            simulation_perimeter = 0
             for y in range(final_state.shape[0]):
                 for x in range(final_state.shape[1]):
                     if final_state[y, x] == FULL:
-                        # Check if this cell has at least one empty neighbor (making it a boundary cell)
-                        is_boundary = False
-                        for dy, dx in [(-1,0), (1,0), (0,-1), (0,1)]:
-                            ny, nx = y + dy, x + dx
-                            if (ny < 0 or ny >= final_state.shape[0] or 
-                                nx < 0 or nx >= final_state.shape[1] or 
-                                final_state[ny, nx] == EMPTY):
-                                is_boundary = True
-                                break
-                        if is_boundary:
-                            boundary_cells += 1
-            
-            # Approximate perimeter as boundary_cells × 4 (assuming square cells with perimeter ≈ 4)
-            # Then use empirical factor to convert to circular equivalent
-            simulation_perimeter = boundary_cells * 0.9  # Empirical factor for circular approximation
-            
-            # Alternative: Calculate equivalent radius and use 2πr
-            if filled_cells > 0:
-                equivalent_radius = math.sqrt(filled_cells / math.pi)
-                simulation_perimeter = 2 * math.pi * equivalent_radius
+                        # Check each of the 4 edges of this cell
+                        # Top edge
+                        if y == 0 or final_state[y-1, x] == EMPTY:
+                            simulation_perimeter += 1
+                        # Bottom edge
+                        if y == final_state.shape[0]-1 or final_state[y+1, x] == EMPTY:
+                            simulation_perimeter += 1
+                        # Left edge
+                        if x == 0 or final_state[y, x-1] == EMPTY:
+                            simulation_perimeter += 1
+                        # Right edge
+                        if x == final_state.shape[1]-1 or final_state[y, x+1] == EMPTY:
+                            simulation_perimeter += 1
         else:
-            # For R domain, calculate from polygon data
+            # For R domain, calculate exact perimeter and area from simulation data
             final_polygons = simpleEvolution[-1]
-            simulation_area = 0
-            simulation_perimeter = 0
             
-            # Collect all points from all polygons to find the convex hull or boundary
-            all_points = []
+            # Collect all FULL points from the simulation
+            filled_points = []
             for polygon in final_polygons:
                 if polygon['id'] == FULL:  # Only consider filled polygons
-                    all_points.extend(polygon['points'])
+                    filled_points.extend(polygon['points'])
             
-            if all_points:
-                # Remove duplicates while preserving order
-                unique_points = []
-                seen = set()
-                for point in all_points:
-                    if point not in seen:
-                        unique_points.append(point)
-                        seen.add(point)
-                
-                # For R domain, we need to calculate the actual propagated area
-                # Create a convex hull polygon from the points to get a realistic boundary
-                if len(unique_points) >= 3:
-                    boundary_shape = MultiPoint(unique_points).convex_hull
-                    simulation_area = boundary_shape.area
-                    simulation_perimeter = boundary_shape.length
-                elif unique_points:
-                    # Fallback for fewer than 3 points (not a polygon)
-                    max_radius = max(get_distance(ini_point, p) for p in unique_points)
-                    simulation_area = math.pi * max_radius**2
-                    simulation_perimeter = 2 * math.pi * max_radius
-                else:
-                    simulation_area = 0
-                    simulation_perimeter = 0
-            else:
-                simulation_area = 0
-                simulation_perimeter = 0
+            # Calculate exact area and perimeter using the actual boundary
+            simulation_area, simulation_perimeter = calculate_exact_boundary_r_domain(filled_points)
         
         print(f"\n{'='*60}")
         print(f"VORTEX SIMULATION SUMMARY - Domain {domain}")
@@ -1260,9 +1332,15 @@ if __name__ == "__main__":
         print(f"  • Maximum propagation radius: {threshold_radius:.2f} units")
         print(f"  • Theoretical vortex perimeter: {final_theoretical_perimeter:.2f} units")
         print(f"  • Theoretical vortex area: {math.pi * threshold_radius**2:.2f} square units")
-        print(f"\nSIMULATION RESULTS (Domain {domain}):")
-        print(f"  • Simulated vortex perimeter: {simulation_perimeter:.2f} units")
-        print(f"  • Simulated vortex area: {simulation_area:.2f} square units")
+        print(f"\nSIMULATION RESULTS (Domain {domain}) - EXACT CALCULATIONS:")
+        print(f"  • Exact simulated vortex perimeter: {simulation_perimeter:.2f} units")
+        print(f"  • Exact simulated vortex area: {simulation_area:.2f} square units")
+        if domain == 'Z':
+            print(f"  • Total filled cells: {int(simulation_area)} cells")
+            print(f"  • Method: Edge counting for exact perimeter calculation")
+        else:
+            print(f"  • Total filled points: {len([p for poly in simpleEvolution[-1] for p in poly['points'] if poly['id'] == FULL])}")
+            print(f"  • Method: Shoelace formula for exact area, edge-length sum for exact perimeter")
         print(f"\nMODEL VALIDATION:")
         print(f"  • Speed at threshold radius: {10.0} units/time (by definition)")
         print(f"  • Core to threshold ratio: {threshold_radius/vortex_core_radius:.2f}")
@@ -1274,4 +1352,4 @@ if __name__ == "__main__":
             print(f"  • Propagation limited to vortex core (solid-body rotation)")
         print(f"{'='*60}\n")
 
-        results_window(domain, simpleEvolution, vortex_speed_evolution)
+        results_window(domain, simpleEvolution, vortex_speed_evolution, ini_point, showRankine=True)
