@@ -8,6 +8,7 @@
 ##############################################################
 
 import sys
+from xmlrpc.client import boolean
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -23,6 +24,28 @@ from shapely.geometry import Polygon, MultiPolygon, Point, LineString
 from shapely.ops import unary_union
 import math
 
+##############################################################
+# Constants and Global Variables
+##############################################################
+
+# Fire state constants
+UNBURNED = 2
+BURNING = 1
+BURNED = 0
+
+# Global structures to organize points by ID and layer type
+STATE_POINTS_BY_ID = {}      # {'0': [(x1,y1), (x2,y2), ...], '1': [...], '2': [...]}
+HUMIDITY_POINTS_BY_ID = {}   # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+VEGETATION_POINTS_BY_ID = {} # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+
+STATE_POINTS_BY_ID_FINAL = {}      # {'0': [(x1,y1), (x2,y2), ...], '1': [...], '2': [...]}
+HUMIDITY_POINTS_BY_ID_FINAL = {}   # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+VEGETATION_POINTS_BY_ID_FINAL = {} # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+
+#DEBUG Variables
+DEBUG = False  # Set to True to enable debugging output
+D_i = 70  # i component of the point to debug
+D_j = 69  # j component of the point to debug
 ##############################################################
 #Auxiliary functions to obtain data and to represent the data
 ##############################################################
@@ -62,7 +85,7 @@ def read_idrisi_raster_file(img_path):
         numpy.ndarray: A NumPy array containing the image data as integers.
     """
     data = np.loadtxt(img_path).astype(int)
-    return data.T  # Transpose so [x, y] matches vector convention
+    return data  # No transpose; keep original orientation
 
 def read_idrisi_vector_file(file_path):
     """
@@ -106,7 +129,7 @@ def read_idrisi_vector_file(file_path):
     return polygons
 
 # Functions to plot the data
-def plot_vectorial(ax, polygons, id, radius=1, color='green', title='No title'):
+def plot_vectorial(ax, polygons, id, radius=1, color='green', title='No title', exclusive_plot=[]):
     """
     Plots a series of polygons on a given matplotlib axis.
     Args:
@@ -118,6 +141,8 @@ def plot_vectorial(ax, polygons, id, radius=1, color='green', title='No title'):
         radius (float, optional): The radius of the circles to be plotted at each vertex. Default is 1.
         color (str, optional): The color of the circles to be plotted at each vertex. Default is 'green'.
         title (str, optional): The title of the plot. Default is 'No title'.
+        exclusive_plot (list, optional): List of polygon IDs to show exclusively. If empty (default), shows ALL polygons including ID 0. 
+                                         If contains specific IDs, shows only those polygons. Default is [].
     Returns:
         None
     """
@@ -130,6 +155,17 @@ def plot_vectorial(ax, polygons, id, radius=1, color='green', title='No title'):
         polygon_id = polygon['id']
         points = polygon['points']
         
+        # Filter polygons based on exclusive_plot list or default behavior
+        if exclusive_plot is not None and len(exclusive_plot) > 0:
+            # If exclusive_plot is provided with specific IDs, only show polygons with IDs in the list
+            if polygon_id not in exclusive_plot:
+                continue
+        elif exclusive_plot == [] or exclusive_plot is None:
+            # Default behavior when exclusive_plot is empty: show ALL polygons including ID 0
+            pass  # Don't filter anything - show all polygons
+        else:
+            # Fallback: show all polygons
+            pass
         # Plot the polygon with transparent fill and black edges
         polygon_shape = plt.Polygon(points, closed=True, edgecolor='black', facecolor='none', fill=True)
         ax.add_patch(polygon_shape)
@@ -144,15 +180,15 @@ def plot_vectorial(ax, polygons, id, radius=1, color='green', title='No title'):
         centroid_x = sum(x for x, y in points) / len(points)
         centroid_y = sum(y for x, y in points) / len(points)
         ax.text(centroid_x, centroid_y, str(polygon_id), fontsize=12, ha='center', va='center', color='black')
-    
-    # Plot each point with a circle on top of everything
-    for polygon in polygons:
-        points = polygon['points']
-        for (x, y) in points:
-            circle = plt.Circle((x, y), radius, color='blue', fill=False)
-            ax.add_patch(circle)
-            ax.plot(x, y, 'ro')  # Plot the point
-    
+        
+        # Plot each point with a circle on top of everything (only for displayed polygons)
+        circle = False
+        if circle:
+            for (x, y) in points:
+                circle = plt.Circle((x, y), radius, color='blue', fill=False)
+                ax.add_patch(circle)
+                ax.plot(x, y, 'ro')  # Plot the point
+        
     ax.set_aspect('equal', adjustable='box')
 
     plt.xlabel('X Coordinate')
@@ -160,7 +196,7 @@ def plot_vectorial(ax, polygons, id, radius=1, color='green', title='No title'):
     plt.title(f'Layer {id} - '+title)
     plt.grid(True)
 
-def plotRaster(ax, matrix, id, color='green', title='No title'):
+def plot_raster(ax, matrix, id, color='green', title='No title'):
     """
     Plots a matrix using matplotlib on a given axis.
 
@@ -173,31 +209,40 @@ def plotRaster(ax, matrix, id, color='green', title='No title'):
     """
     ax.clear()  # Clear the axis to prepare for the new frame
   
-    # Define the color scale
+    # Define the color scale with explicit mapping
+    # BURNED = 0 -> black, BURNING = 1 -> red, UNBURNED = 2 -> green
     cmap = plt.cm.colors.ListedColormap(['black', 'red', 'green', 'blue'])
     bounds = [0, 1, 2, 3, 4]
     norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
   
-    #cax = ax.imshow(matrix, cmap='viridis', interpolation='nearest')
-    cax = ax.imshow(matrix, cmap=cmap, norm=norm,  interpolation='nearest')
+    # Get unique values for debugging
+    unique_values = np.unique(matrix)
+    print(f"DEBUG - Unique values in matrix: {unique_values}")
     
-    # Highlight the cells with the given ID
-    #highlight = np.where(matrix == id)
-    #ax.scatter(highlight[1], highlight[0], color=color, label=f'ID {id}', edgecolor='black')
+    # Count each state
+    burned_count = np.sum(matrix == 0)
+    burning_count = np.sum(matrix == 1) 
+    unburned_count = np.sum(matrix == 2)
+    print(f"DEBUG - Counts: BURNED={burned_count}, BURNING={burning_count}, UNBURNED={unburned_count}")
+  
+    cax = ax.imshow(matrix, cmap=cmap, norm=norm, interpolation='nearest')
     
-    # Add a colorbar
-    #plt.colorbar(cax, ax=ax, label='Value')
-    
-    # Add title and labels
-    ax.set_title(f'Layer {id} - '+title)
+    # Add title and labels with additional info
+    ax.set_title(f'Layer {id} - {title}\n(Black=BURNED, Red=BURNING, Green=UNBURNED)')
     ax.set_xlabel('X Coordinate')
     ax.set_ylabel('Y Coordinate')
     
     # Invert the y-axis to have 0 at the bottom
     ax.invert_yaxis()
-
-    # Add legend
-    #ax.legend()
+    
+    # Add a simple legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='black', label=f'BURNED ({burned_count})'),
+        Patch(facecolor='red', label=f'BURNING ({burning_count})'),
+        Patch(facecolor='green', label=f'UNBURNED ({unburned_count})')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.15, 1))
 
 def create_idrisi_raster(polygons, output_filename):
     """
@@ -261,19 +306,20 @@ def create_idrisi_raster(polygons, output_filename):
         metadata_file.write(f"flag value  : none\n")
         metadata_file.write(f"flag def'n  : none\n")
 
-def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution):
+def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution, windEvolution):
     """
-    Displays a window with a slider and radio buttons to visualize the evolution of fire, vegetation, and humidity over time.
+    Displays a window with a slider and radio buttons to visualize the evolution of fire, vegetation, humidity, and wind over time.
     Args:
         domain (str): The domain type, either 'Z' for raster or other for vectorial.
         fireEvolution (list): A list of matrices or vectors representing the evolution of fire over time.
         vegetationEvolution (list): A list of matrices or vectors representing the evolution of vegetation over time.
         humidityEvolution (list): A list of matrices or vectors representing the evolution of humidity over time.
+        windEvolution (list): A list of matrices or vectors representing the evolution of wind over time.
     
     The window contains:
         - A matplotlib figure to display the selected evolution state.
         - A slider to navigate through different frames of the selected evolution.
-        - Radio buttons to switch between fire, vegetation, and humidity evolutions.
+        - Radio buttons to switch between fire, vegetation, humidity, and wind evolutions.
     """
     root = tk.Tk()
     root.title("Select Action")
@@ -282,10 +328,10 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
  
     # Slider for selecting the matrix
-    def on_slider_change(val, layerEvolution):
+    def on_slider_change(val, layerEvolution, use_domain=domain):
         frame = int(float(val))
-        if domain == 'Z':
-            plotRaster(ax, layerEvolution[frame], id=0, color='red', title=f'State at Frame {frame}')
+        if use_domain == 'Z':
+            plot_raster(ax, layerEvolution[frame], id=0, color='red', title=f'State at Frame {frame}')
         else:
             plot_vectorial(ax, layerEvolution[frame], id=0, radius=1, color='red', title=f'State at Frame {frame}')
         canvas.draw()
@@ -306,7 +352,7 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
         slider.config(command=lambda val: on_slider_change(val, fireEvolution))
         slider_label.config(text="Fire")
         if domain == 'Z':
-            plotRaster(ax, fireEvolution[0], id=0, color='red', title='Fire - Initial State')
+            plot_raster(ax, fireEvolution[0], id=0, color='red', title='Fire - Initial State')
         else:
             plot_vectorial(ax, fireEvolution[0], id=0, radius=1, color='red', title='Fire - Initial State')
         slider.set(0)  # Reset slider to the beginning
@@ -316,7 +362,7 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
         slider.config(command=lambda val: on_slider_change(val, vegetationEvolution))
         slider_label.config(text="Vegetation")
         if domain == 'Z':
-            plotRaster(ax, vegetationEvolution[0], id=0, color='green', title='Vegetation - Initial State')
+            plot_raster(ax, vegetationEvolution[0], id=0, color='green', title='Vegetation - Initial State')
         else: 
             plot_vectorial(ax, vegetationEvolution[0], id=0, radius=1, color='green', title='Vegetation - Initial State')
         slider.set(0)  # Reset slider to the beginning
@@ -326,9 +372,16 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
         slider.config(command=lambda val: on_slider_change(val, humidityEvolution))
         slider_label.config(text="Humidity")
         if domain == 'Z':
-            plotRaster(ax, humidityEvolution[0], id=0, color='blue', title='Humidity - Initial State')
+            plot_raster(ax, humidityEvolution[0], id=0, color='blue', title='Humidity - Initial State')
         else:
             plot_vectorial(ax, humidityEvolution[0], id=0, radius=1, color='blue', title='Humidity - Initial State')
+        slider.set(0)  # Reset slider to the beginning
+        canvas.draw()
+
+    def set_wind_evolution():
+        slider.config(command=lambda val: on_slider_change(val, windEvolution, "Z"))
+        slider_label.config(text="Wind")
+        plot_raster(ax, windEvolution[0], id=0, color='purple', title='Wind - Initial State')
         slider.set(0)  # Reset slider to the beginning
         canvas.draw()
 
@@ -344,6 +397,9 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
 
     radio_humidity = ttk.Radiobutton(button_frame, text="Humidity", variable=selected_option, value="Humidity", command=set_humidity_evolution)
     radio_humidity.pack(side=tk.LEFT, padx=10)
+
+    radio_wind = ttk.Radiobutton(button_frame, text="Wind", variable=selected_option, value="Wind", command=set_wind_evolution)
+    radio_wind.pack(side=tk.LEFT, padx=10)
 
     root.mainloop()
 
@@ -396,7 +452,7 @@ def animate_layers(layersArray, interval=500, radius=1, color='green', title='No
 ##############################################################
 #m:n-CAk on Z specific functions
 ##############################################################
-def evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_vegetation, new_humidity, wind):
+def evolution_function_on_Z(point,state, vegetation, humidity, wind, new_state, new_vegetation, new_humidity, new_wind):
     """
     Simulates the evolution of a wildfire in a m:n-CAk cellular automaton model.
     Args:
@@ -414,6 +470,9 @@ def evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_ve
             - new_vegetation (ndarray): Updated vegetation levels of the grid.
             - new_humidity (ndarray): Updated humidity levels of the grid.
     """
+
+    global DEBUG, D_i, D_j, BURNING, UNBURNED, BURNED
+
     new_LP = []
     nc = []
     vc = []
@@ -425,31 +484,44 @@ def evolution_function_on_Z(point,state, vegetation, humidity, new_state, new_ve
     # obtaint the wind speed
     wind_speed = combination_function_on_Z(nc, wind)
 
-    #Getting the vicinity
-    vc = get_vc_Z(point, max_dim, wind_speed)
+    if DEBUG:
+        global D_i, D_j
+        if i == D_i and i == D_j:
+            print(f"DEBUG - Processing point {point} with state {state[i, j]} and vegetation {vegetation[i, j]}")
     
-    if combination_function_on_Z(nc,state) == BURNING:
-        if combination_function_on_Z(nc,vegetation) == 0:
+    cell_state = combination_function_on_Z(nc,state)
+    #Getting the vicinity
+    vc = get_vc_Z(point, max_dim, wind_speed, cell_state)
+
+    if cell_state == BURNING:
+        cell_vegetion = combination_function_on_Z(nc,vegetation)
+        if cell_vegetion <= 0:
             new_state[i, j] = BURNED
-        else:
-            new_vegetation[i,j] -= 1
-            new_LP.append([i,j])
+            new_LP.append([i, j])
             new_LP.extend([elems for elems in get_vc_Z(point, max_dim, wind_speed)])
-    elif state[i,j] == UNBURNED:
+        else:
+            # Decreasing the vegetation.
+            new_vegetation[i, j] -= 1
+            new_LP.append([i, j])
+            #new_LP.extend([elems for elems in get_vc_Z(point, max_dim, wind_speed)])
+    elif cell_state == UNBURNED:
         for point_vc in vc:
-            #We muist acces information contained on other layers, therefore we will use combination funcion
+            #We must acces information contained on other layers, therefore we will use combination funcion
             #In this case, the points we will use are georeferences by the same coordinates, therefore the combination functions
             #is just returning the same point that will be used as center of the vicinity.
             i_vc, j_vc = point_vc
-            if state[i_vc,j_vc] == BURNING:
+            vicinity_cell_state = combination_function_on_Z(point_vc, state)
+            if vicinity_cell_state == BURNING:
                 if humidity[i, j] > 0:
                     new_humidity[i, j] -= 1
-                elif vegetation[i,j] > 0:
+                    new_LP.append([i, j])
+                elif vegetation[i, j] > 0:
                     new_state[i, j] = BURNING
-                    new_LP.append([i_vc, j_vc])
-                    new_LP.extend([elems for elems in get_vc_Z(point_vc, max_dim, wind_speed)])
+                    # new_wind=increase_wind_in_vicinity(nc, wind,max_dim,10)
+                    new_LP.append([i, j])
+                    new_LP.extend([elems for elems in get_vc_Z(point, max_dim, wind_speed)])
 
-    return new_LP,new_state, new_vegetation, new_humidity
+    return new_LP,new_state, new_vegetation, new_humidity, new_wind
 
 def event_scheduling_on_Z():
     """
@@ -466,7 +538,7 @@ def event_scheduling_on_Z():
     # vegetation layer.
     folder_path = './'
     vegetation_map_doc_path = os.path.join(folder_path, 'vegetation.doc')
-    vegetation_map_img_path = os.path.join(folder_path, 'vegetation.img')
+    vegetation_img_path = os.path.join(folder_path, 'vegetation.img')
 
     # humidity layer
     humidity_doc_path = os.path.join(folder_path, 'humidity.doc')
@@ -480,7 +552,7 @@ def event_scheduling_on_Z():
 
     # Reading the information of the layers
     # vegetation layer
-    vegetation_data = read_idrisi_raster_file(vegetation_map_img_path)
+    vegetation_data = read_idrisi_raster_file(vegetation_img_path)
 
     # humidity layer
     humidity_data = read_idrisi_raster_file(humidity_img_path)
@@ -491,9 +563,10 @@ def event_scheduling_on_Z():
     # defining the size for the layers, the same for all.
     size = (100, 100)
 
-    # Auxiliary functions to convert the vector in a matrix of data for both layers.
+    # Auxiliary functions to convert the vector in a matrix of data for all layers.
     humidity_data = humidity_data.reshape(size)
     vegetation_data = vegetation_data.reshape(size)
+    wind_data = wind_data.reshape(size)
 
     # Modifying the initial conditions to start the wildfire
     initial_fire = np.full(size, UNBURNED)
@@ -506,13 +579,20 @@ def event_scheduling_on_Z():
     # Adding the initial point we change.
     LP.append(ini_point)
 
+    # obtaint the wind speed
+    wind_speed = combination_function_on_Z(ini_point, wind_data)
+
+    #Getting the vicinity
+    vc = get_vc_Z(ini_point, max_dim, wind_speed)
+
     # Also adding the neighborhoods of this point.
-    LP.extend([point for point in get_vc_Z(ini_point, max_dim)])
+    LP.extend([point for point in vc])
 
     # Variable that will contain all the states we define on the execution of the model.
     fireEvolution = [initial_fire]
     vegetationEvolution = [vegetation_data]
     humidityEvolution = [humidity_data]
+    windEvoution = [wind_data]
 
     # Number of steps to execute the evolution function
     n_steps = 100
@@ -524,18 +604,21 @@ def event_scheduling_on_Z():
         new_state = fireEvolution[-1].copy()
         new_vegetation = vegetationEvolution[-1].copy()
         new_humidity = humidityEvolution[-1].copy()
+        new_wind = windEvoution[-1].copy()
         # Event Scheduling simulation engine, where LP is the event list.
         for point in LP:
-            LP_new, new_state, new_vegetation, new_humidity = evolution_function_on_Z(point, fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], new_state, new_vegetation, new_humidity, wind_data)
+            LP_new, new_state, new_vegetation, new_humidity, new_wind = evolution_function_on_Z(point, fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1], windEvoution[-1], new_state, new_vegetation, new_humidity, new_wind)
             [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
 
         LP = []
         [LP.append(elemento) for elemento in LP_rep if elemento not in LP]
+        
         fireEvolution.append(new_state)
         vegetationEvolution.append(new_vegetation)
         humidityEvolution.append(new_humidity)
+        windEvoution.append(new_wind)
 
-    return fireEvolution, vegetationEvolution, humidityEvolution
+    return fireEvolution, vegetationEvolution, humidityEvolution, windEvoution
 
 ##############################################################
 #m:n-CAk on R specific functions
@@ -572,7 +655,7 @@ def is_point_in_polygon(point, polygon_points):
     # Check if the polygon contains the point
     return polygon.intersects(Point(point))
 
-def find_polygon_id(point, polygons):
+def find_polygon_id(point, polygons, type=None):
     """
     Finds the ID of the smallest polygon that contains a given point.
     Args:
@@ -583,57 +666,360 @@ def find_polygon_id(point, polygons):
     Returns:
         any: The ID of the smallest polygon that contains the point. If no polygon contains the point, returns None.
     """
+    global DEBUG, D_i, D_j
 
     i, j = point
-
-    if i == 70 and j == 70:
-        a=1
+    # Start debugging
+    if DEBUG:
+        if(i == D_i and j == D_j):
+            print(f"DEBUG - Searching for point {point} in polygons")
+    # end debugging
 
     smallest_polygon_id = None
     smallest_area = float('inf')
+    smallest_polygon_id = float('inf')
+    current_polygon_id = float('inf')
+    current_area = float('inf')
     
-    for polygon in polygons:
-        if is_point_in_polygon(point, polygon['points']):
-            if len(polygon['points']) == 1: #if the poligon is a point
-                current_area = 0
-            elif len(polygon['points']) == 2: #if the poligon is a line segment
-                current_area = 0
-            else:
-                current_polygon = Polygon(polygon['points'])
-                current_area = current_polygon.area
-            
-            if current_area < smallest_area:
-                smallest_area = current_area
-                smallest_polygon_id = polygon['id']
-    
-    return smallest_polygon_id
+    # Verificar si el punto está en la estructura global identificada por type
+    polygon_id_dictionary = None
+    if type is not None:
+        polygon_id_dictionary = get_point_id_from_global_structure(point, type)
 
-def addVectorialMap(vectorialMap, layersArray):
+    # If the point is in the global structure, return the ID directly
+    if polygon_id_dictionary is not None:
+        return polygon_id_dictionary
+    else:
+        # If the point is not in the global structure, proceed to check polygons
+        for polygon in polygons:
+            if is_point_in_polygon(point, polygon['points']):
+                if len(polygon['points']) == 1: #if the poligon is a point
+                    current_area = -1
+                    current_polygon_id = polygon['id']
+                elif len(polygon['points']) == 2: #if the poligon is a line segment
+                    current_area = 0
+                    current_polygon_id = polygon['id']
+                else:
+                    current_polygon = Polygon(polygon['points'])
+                    current_area = current_polygon.area
+                    current_polygon_id = polygon['id']
+                # Check if the current polygon is smaller than the smallest found so far
+                if current_area < smallest_area:
+                    smallest_area = current_area
+                    smallest_polygon_id = current_polygon_id
+        # Si no se encontró ningún polígono, warning y devuelve -1
+        if smallest_polygon_id is None or smallest_polygon_id == float('inf'):
+            print(f"WARNING: No polygon found for point {point} with type '{type}'. Returning -1.")
+            return -1
+        return smallest_polygon_id
+
+def remove_points_from_global_structure(points_to_remove, type):
     """
-    Adds a vectorial map to the layers array, ensuring no duplicate points.
-    This function checks if the given vectorial map is a single point. If so, it searches for and removes any existing 
-    identical point in the layers array. After that, it adds the vectorial map to the layers array if it is not already present.
+    Elimina una lista de puntos de toda la estructura global del tipo especificado.
+    Busca cada punto en points_to_remove a través de todos los IDs y los elimina.
+    
     Args:
-        vectorialMap (list): A list containing a single dictionary with a 'points' key, which is a list of points.
-        layersArray (list): A list of vectorial maps, where each vectorial map is a list containing a dictionary with a 'points' key.
+        points_to_remove (list): Lista de puntos (tuplas) a eliminar
+        type (str): Tipo de estructura global ("state", "humidity", "vegetation")
+    
     Returns:
         None
     """
-    # Verificar si vectorialMap es un punto
-    if len(vectorialMap) == 1 and isinstance(vectorialMap[0], dict) and len(vectorialMap[0]['points']) == 1:
-        point_to_add = vectorialMap[0]['points'][0]
-        
-        # Buscar y eliminar el punto en layersArray si existe
-        for layer in layersArray:
-            if len(layer) == 1 and isinstance(layer[0], dict) and len(layer[0]['points']) == 1:
-                existing_point = layer[0]['points'][0]
-                if existing_point == point_to_add:
-                    layersArray.remove(layer)
-                    break
+    global DEBUG, D_i, D_j, STATE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID
     
-    # Añadir el vectorialMap a layersArray
+    # Seleccionar la estructura global correspondiente según el tipo
+    if type == "state":
+        points_by_id = STATE_POINTS_BY_ID
+    elif type == "humidity":
+        points_by_id = HUMIDITY_POINTS_BY_ID
+    elif type == "vegetation":
+        points_by_id = VEGETATION_POINTS_BY_ID
+    else:
+        raise ValueError(f"Tipo de capa no válido: {type}. Debe ser 'state', 'humidity' o 'vegetation'")
+    
+    # Convertir points_to_remove a set para búsqueda más eficiente
+    points_to_remove_set = set(points_to_remove)
+    ids_to_remove = []  # Lista para almacenar IDs que quedan vacíos
+    
+    # Iterar por todos los IDs en la estructura
+    for id_key in list(points_by_id.keys()):
+        # Filtrar puntos que no estén en points_to_remove
+        points_by_id[id_key] = [pt for pt in points_by_id[id_key] 
+                               if pt not in points_to_remove_set]
+        if DEBUG:
+            for point in points_to_remove_set:
+                if point[0] == D_i and point[1] == D_j:
+                    print(f"DEBUG - Removing point {point} with ID {id_key} from {type}")
+
+        # Si el ID queda vacío, marcarlo para eliminación
+        if len(points_by_id[id_key]) == 0:
+            ids_to_remove.append(id_key)
+    
+    # Eliminar IDs que quedaron vacíos
+    for id_key in ids_to_remove:
+        del points_by_id[id_key]
+
+def add_points_to_global_structure(points_to_add, target_id, type):
+    """
+    Añade una lista de puntos al ID especificado en el diccionario global, evitando duplicados.
+    
+    Args:
+        points_to_add (list): Lista de puntos (tuplas) a añadir
+        target_id (str): ID donde añadir los puntos
+        type (str): Tipo de estructura global ("state", "humidity", "vegetation")
+    
+    Returns:
+        None
+    """
+    global DEBUG, D_i, D_j, STATE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID
+    
+    # Seleccionar la estructura global correspondiente según el tipo
+    if type == "state":
+        points_by_id = STATE_POINTS_BY_ID
+    elif type == "humidity":
+        points_by_id = HUMIDITY_POINTS_BY_ID
+    elif type == "vegetation":
+        points_by_id = VEGETATION_POINTS_BY_ID
+    else:
+        raise ValueError(f"Tipo de capa no válido: {type}. Debe ser 'state', 'humidity' o 'vegetation'")
+    
+    # Crear la entrada si no existe
+    if target_id not in points_by_id:
+        points_by_id[target_id] = []
+    
+    # Añadir cada punto si no existe ya en este ID
+    for point_to_add in points_to_add:
+        if not any(are_points_equal(existing_pt, point_to_add, dist=0) for existing_pt in points_by_id[target_id]):
+            if DEBUG:
+                if point_to_add[0] == D_i and point_to_add[1] == D_j:
+                    print(f"DEBUG - Adding point {point_to_add} to ID {target_id} of type {type}")
+            points_by_id[target_id].append(point_to_add)
+
+def are_points_equal(point1, point2, dist=0):
+    """
+    Compares two points and returns True if they are equal or within a specified distance.
+    
+    Args:
+        point1 (tuple): First point coordinates (x, y).
+        point2 (tuple): Second point coordinates (x, y).
+        dist (float, optional): Maximum distance tolerance. Default is 0 (exact equality).
+    
+    Returns:
+        bool: True if points are equal or within distance tolerance, False otherwise.
+    """
+    # Convert both points to float for robust comparison
+    x1, y1 = float(point1[0]), float(point1[1])
+    x2, y2 = float(point2[0]), float(point2[1])
+    if dist == 0:
+        # Exact equality check (with float)
+        return x1 == x2 and y1 == y2
+    else:
+        # Distance-based comparison
+        distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+        return distance <= dist
+
+def addVectorialMap(vectorialMap, layersArray, type):
+    """
+    Adds a vectorial map to the layers array and maintains global point structures by ID and type.
+    
+    This function:
+    1. Manages three global dictionaries (STATE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID)
+    2. Ensures each point exists in only one ID per type
+    3. Removes duplicate points from other IDs when adding new ones
+    
+    Args:
+        vectorialMap (dict or list): A dictionary with 'id' and 'points' keys, or a list of such dictionaries
+        layersArray (list): A list of vectorial maps for the layer
+        type (str): The type of layer ("state", "humidity", or "vegetation")
+    Returns:
+        None
+    """
+    global D_i, D_j, DEBUG
+    
+    def remove_points_from_layers_array(points_to_remove, layersArray):
+        """
+        Función auxiliar que elimina una lista de puntos únicamente del layersArray.
+        
+        Args:
+            points_to_remove (list): Lista de puntos (tuplas) a eliminar
+            layersArray (list): Array de layers de donde eliminar los puntos
+        
+        Returns:
+            None
+        """
+        # Eliminar puntos del layersArray
+        layers_to_remove = []  # Lista de layers que quedan vacíos
+        
+        for layer_index, layer in enumerate(layersArray):
+            # Cada layer es una lista de vectorial maps (diccionarios)
+            if isinstance(layer, list):
+                if DEBUG:
+                    print("DEBUG - ERROR on Layer %d: Expected dict, got list", layer_index)
+                continue            
+            # Si el layer es directamente un diccionario con puntos
+            elif isinstance(layer, dict) and 'points' in layer:
+                # Filtrar puntos que no estén en points_to_remove
+                original_points = layer['points'][:]
+                filtered_points = []
+                
+                for point in original_points:
+                    should_keep = True
+                    for point_to_remove in points_to_remove:
+                        if are_points_equal(point, point_to_remove, dist=0):
+                            should_keep = False
+                            break
+                    if should_keep:
+                        filtered_points.append(point)
+                
+                # Actualizar los puntos del elemento
+                layer['points'] = filtered_points
+                
+                # Si el elemento queda vacío, marcarlo para eliminación
+                if len(filtered_points) == 0:
+                    layers_to_remove.append(layer_index)
+        
+        # Eliminar layers vacíos (en orden inverso para no alterar índices)
+        for layer_index in reversed(layers_to_remove):
+            layersArray.pop(layer_index)
+
+
+    # Convertir vectorialMap a lista si es un diccionario único
+    if isinstance(vectorialMap, dict):
+        vectorialMap_copy = [vectorialMap]
+    
+    # Usar la función auxiliar para eliminar todos los puntos del vectorialMap del layersArray
+    for vectorial_element in vectorialMap_copy:
+        if isinstance(vectorial_element, dict) and 'id' in vectorial_element and 'points' in vectorial_element:
+            new_id = str(vectorial_element['id'])  # Convertir ID a string para consistencia
+            new_points = vectorial_element['points']
+            #remove_points_from_layers_array(new_points, layersArray)
+
+            # 1. Eliminar estos puntos de cualquier ID en la estructura global
+            remove_points_from_global_structure(new_points, type)
+            
+            # 2. Añadir los puntos al ID correspondiente
+            add_points_to_global_structure(new_points, new_id, type)
+
+    # Añadir el vectorialMap a layersArray si no existe ya
     if vectorialMap not in layersArray:
         layersArray.append(vectorialMap)
+
+    '''
+   # Convertir vectorialMap a lista si es un diccionario único
+    if isinstance(vectorialMap, dict):
+        vectorialMap = [vectorialMap]
+    
+    # Procesar cada elemento del vectorialMap
+    for vectorial_element in vectorialMap:
+        if isinstance(vectorial_element, dict) and 'id' in vectorial_element and 'points' in vectorial_element:
+            new_id = str(vectorial_element['id'])  # Convertir ID a string para consistencia
+            new_points = vectorial_element['points']
+
+            # 1. Eliminar estos puntos de cualquier otro ID en la estructura global
+            remove_points_from_global_structure(new_points, new_id, type)
+            
+            # 2. Añadir los puntos al ID correspondiente
+            add_points_to_global_structure(new_points, new_id, type)
+    '''
+
+def get_point_id_from_global_structure(point, type):
+    """
+    Busca un punto en la estructura global y devuelve su ID si lo encuentra.
+    
+    Args:
+        point (tuple): Punto (x, y) a buscar
+        type (str): Tipo de estructura global ("state", "humidity", "vegetation")
+    
+    Returns:
+        str or None: El ID del punto si se encuentra, None si no se encuentra
+    """
+    global STATE_POINTS_BY_ID_FINAL, HUMIDITY_POINTS_BY_ID_FINAL, VEGETATION_POINTS_BY_ID_FINAL
+
+    if type == "state":
+        points_by_id = STATE_POINTS_BY_ID_FINAL
+    elif type == "humidity":
+        points_by_id = HUMIDITY_POINTS_BY_ID_FINAL
+    elif type == "vegetation":
+        points_by_id = VEGETATION_POINTS_BY_ID_FINAL
+    else:
+        raise ValueError(f"Tipo de capa no válido: {type}. Debe ser 'state', 'humidity' o 'vegetation'")
+
+    # Buscar el punto en la estructura global
+    for id_key, points_list in points_by_id.items():
+        for existing_point in points_list:
+            if are_points_equal(point, existing_point, dist=0):
+                return id_key
+    
+    # Si no se encuentra el punto, devolver None
+    return None
+
+def print_points_by_id_debug(type=None):
+    """
+    Función de debug para imprimir las estructuras de puntos por ID.
+    
+    Args:
+        type (str, optional): Tipo específico a mostrar. Si es None, muestra todos.
+    """
+    global STATE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID
+    
+    if type is None or type == "state":
+        print(f"STATE_POINTS_BY_ID: {STATE_POINTS_BY_ID}")
+    if type is None or type == "humidity":
+        print(f"HUMIDITY_POINTS_BY_ID: {HUMIDITY_POINTS_BY_ID}")
+    if type is None or type == "vegetation":
+        print(f"VEGETATION_POINTS_BY_ID: {VEGETATION_POINTS_BY_ID}")
+
+def print_global_structures_summary():
+    """
+    Imprime un resumen de las estructuras globales de puntos por ID.
+    Muestra estadísticas sobre la distribución de puntos por tipo y ID.
+    """
+    global STATE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID
+    
+    print("\n" + "="*60)
+    print("RESUMEN DE ESTRUCTURAS GLOBALES DE PUNTOS POR ID")
+    print("="*60)
+    
+    # Estadísticas para STATE
+    print(f"\nSTATE POINTS BY ID:")
+    total_state_points = 0
+    for id_key, points in STATE_POINTS_BY_ID.items():
+        count = len(points)
+        total_state_points += count
+        print(f"  ID {id_key}: {count} puntos")
+    print(f"  TOTAL: {total_state_points} puntos")
+    
+    # Mostrar puntos en estado BURNING (ID 1)
+    if '1' in STATE_POINTS_BY_ID and len(STATE_POINTS_BY_ID['1']) > 0:
+        print(f"\n  PUNTOS EN ESTADO BURNING (ID 1):")
+        burned_points = STATE_POINTS_BY_ID['1']
+        if len(burned_points) <= 2000:  # Si hay pocos puntos, mostrar todos
+            for i, point in enumerate(burned_points):
+                print(f"    {i+1:2d}. {point}")
+        else:  # Si hay muchos puntos, mostrar solo los primeros 20
+            for i, point in enumerate(burned_points[:20]):
+                print(f"    {i+1:2d}. {point}")
+            print(f"    ... y {len(burned_points) - 20} puntos más")
+    
+    # Estadísticas para HUMIDITY
+    print(f"\nHUMIDITY POINTS BY ID:")
+    total_humidity_points = 0
+    for id_key, points in HUMIDITY_POINTS_BY_ID.items():
+        count = len(points)
+        total_humidity_points += count
+        print(f"  ID {id_key}: {count} puntos")
+    print(f"  TOTAL: {total_humidity_points} puntos")
+    
+    # Estadísticas para VEGETATION
+    print(f"\nVEGETATION POINTS BY ID:")
+    total_vegetation_points = 0
+    for id_key, points in VEGETATION_POINTS_BY_ID.items():
+        count = len(points)
+        total_vegetation_points += count
+        print(f"  ID {id_key}: {count} puntos")
+    print(f"  TOTAL: {total_vegetation_points} puntos")
+    
+    print("\n" + "="*60 + "\n")
 
 def sort_points(points):
     """
@@ -644,81 +1030,116 @@ def sort_points(points):
     Returns:
         list of tuple: A list of points sorted by their angle with respect to the centroid of the polygon.
     """
-    # Calculate the centroid of the polygon
+    import math
+    if len(points) < 3:
+        return points
     centroid_x = sum(x for x, y in points) / len(points)
     centroid_y = sum(y for x, y in points) / len(points)
-    
-    # Sort points based on the angle with respect to the centroid
-    def angle_from_centroid(point):
+    def angle_and_distance(point):
         x, y = point
-        return math.atan2(y - centroid_y, x - centroid_x)
-    
-    return sorted(points, key=angle_from_centroid)
+        angle = math.atan2(y - centroid_y, x - centroid_x)
+        dist = (x - centroid_x) ** 2 + (y - centroid_y) ** 2
+        return (angle, dist)
+    # Ordena primero por ángulo, luego por distancia al centroide (para desempatar)
+    return sorted(points, key=angle_and_distance)
     
 def simplifyVectorialMap(vectorialMap):
     """
-    Simplifies a vectorial map by merging polygons that are within a certain distance (defined by the vicinity) of each other.
-    Args:
-        vectorialMap (list): A list of dictionaries, where each dictionary represents a polygon with an 'id' and 'points'.
-                             The 'id' is a unique identifier for the polygon, and 'points' is a list of coordinates.
-    Returns:
-        list: A simplified vectorial map, where polygons that are close to each other are merged. Each element in the 
-              returned list is a dictionary with an 'id' and 'points'. The 'points' represent the exterior coordinates 
-              of the merged polygons.
-    """
-    # Agrupar polígonos por ID
-    polygons_by_id = {}
-    for polygon in vectorialMap:
-        poly_id = polygon['id']
-        if poly_id not in polygons_by_id:
-            polygons_by_id[poly_id] = []
-        if len(polygon['points']) == 1:
-            polygons_by_id[poly_id].append(Point(polygon['points'][0]))
-        elif len(polygon['points']) == 2:
-            polygons_by_id[poly_id].append(Point(polygon['points'][0]))
-            polygons_by_id[poly_id].append(Point(polygon['points'][1]))
-        else:
-            polygons_by_id[poly_id].append(Polygon(polygon['points']))
-    
-    simplified_vectorial_map = []
-    
-    # Unir polígonos que cumplen con el criterio de distancia
-    for poly_id, polygons in polygons_by_id.items():
-        merged_polygons = []
-        while polygons:
-            base_polygon = polygons.pop(0)
-            to_merge = [base_polygon]
-            for other_polygon in polygons[:]:
-                if base_polygon.distance(other_polygon) <= 1:
-                    to_merge.append(other_polygon)
-                    polygons.remove(other_polygon)
-            merged_polygon = unary_union(to_merge)
-            merged_polygons.append(merged_polygon)
-        
-        # Añadir los polígonos unidos al nuevo vectorialMap
-        for merged_polygon in merged_polygons:
-            if isinstance(merged_polygon, MultiPolygon):
-                for poly in merged_polygon:
-                    simplified_vectorial_map.append({'id': poly_id, 'points': list(poly.exterior.coords)})
-            elif isinstance(merged_polygon, Polygon):
-                simplified_vectorial_map.append({'id': poly_id, 'points': list(merged_polygon.exterior.coords)})
-            elif isinstance(merged_polygon, Point):
-                simplified_vectorial_map.append({'id': poly_id, 'points': [(merged_polygon.x, merged_polygon.y)]})
-            else:
-                # Manejar el caso donde merged_polygon es una colección de puntos
-                points = []
-                for geom in merged_polygon.geoms:
-                    if isinstance(geom, Point):
-                        #simplified_vectorial_map.append({'id': poly_id, 'points': [(geom.x, geom.y)]})
-                        points.append((geom.x, geom.y))
-                    elif isinstance(geom, Polygon):
-                        #simplified_vectorial_map.append({'id': poly_id, 'points': list(geom.exterior.coords)})
-                        points.extend(list(geom.exterior.coords))
-                # Create a polygon from the points. To assure not add interior points.
-                points_ext = remove_interior_points(points)
-                points_ext = sort_points(points_ext)
-                simplified_vectorial_map.append({'id': poly_id, 'points': points_ext})
+    Simplifies a vectorial map by merging polygons with the same ID using union operations.
 
+    This function groups polygons by ID and merges them if they meet any of these criteria:
+        1. They have points in common (intersect)
+        2. One is inside the other (containment relationship)
+        3. They are adjacent or overlapping
+        4. (Nuevo) Si algún punto de dos polígonos está a menos de 'tolerance' distancia, se unen
+
+    For polygons with the same ID, this creates unified geometries using the union operation.
+
+    OPTIMIZACIÓN: Agrupar por ID y usar unary_union de Shapely para cada grupo, agrupando por clusters de proximidad.
+    Parámetro:
+        tolerance (float): distancia máxima para unir clusters (default=1.5)
+    """
+    from shapely.geometry import Polygon, Point, LineString, MultiPoint, MultiPolygon, GeometryCollection
+    from shapely.ops import unary_union
+    import numpy as np
+    from sklearn.cluster import DBSCAN
+    import inspect
+    def get_all_points(geom):
+        from shapely.geometry import Polygon, LineString, Point, MultiPoint, MultiPolygon, GeometryCollection
+        if isinstance(geom, Polygon):
+            return list(geom.exterior.coords)
+        elif isinstance(geom, LineString):
+            return list(geom.coords)
+        elif isinstance(geom, Point):
+            return [(geom.x, geom.y)]
+        elif isinstance(geom, MultiPoint):
+            return [(pt.x, pt.y) for pt in geom.geoms]
+        elif isinstance(geom, MultiPolygon):
+            pts = []
+            for poly in geom.geoms:
+                pts.extend(list(poly.exterior.coords))
+            return pts
+        elif isinstance(geom, GeometryCollection):
+            pts = []
+            for g in geom.geoms:
+                pts.extend(get_all_points(g))
+            return pts
+        else:
+            return []
+
+    import numpy as np
+    from shapely.geometry import Polygon, Point, LineString
+    from shapely.ops import unary_union
+    # Paso 1: Agrupar por ID (0 a 3)
+    tolerance = 1.5
+    simplified_vectorial_map = []
+    for poly_id in range(0, 4):
+        # Extraer todos los elementos de este ID
+        elements = [p for p in vectorialMap if p['id'] == poly_id]
+        if not elements:
+            continue
+        groups = []
+        used = set()
+        for i, elem in enumerate(elements):
+            if i in used:
+                continue
+            group = [elem]
+            used.add(i)
+            pts1 = np.array(elem['points'])
+            for j, other in enumerate(elements):
+                if j == i or j in used:
+                    continue
+                pts2 = np.array(other['points'])
+                # Comprobar si algún punto está a distancia < tolerance
+                close = False
+                for p1 in pts1:
+                    for p2 in pts2:
+                        if np.linalg.norm(np.array(p1) - np.array(p2)) < tolerance:
+                            close = True
+                            break
+                    if close:
+                        break
+                if close:
+                    group.append(other)
+                    used.add(j)
+            groups.append(group)
+        # Para cada grupo, unir los puntos, eliminar interiores y crear el nuevo elemento
+        for group in groups:
+            all_points = []
+            for g in group:
+                # g['points'] puede ser un punto, segmento o polígono
+                if isinstance(g['points'], (list, tuple)):
+                    all_points.extend(g['points'])
+                else:
+                    all_points.append(g['points'])
+            filtered_points = remove_interior_points(all_points)
+            # Ordenar los puntos para formar un contorno (ángulo respecto al centroide)
+            if filtered_points:
+                if len(filtered_points) > 2:
+                    ordered_points = sort_points(filtered_points)
+                else:
+                    ordered_points = filtered_points
+                simplified_vectorial_map.append({'id': poly_id, 'points': ordered_points})
     return simplified_vectorial_map
 
 def remove_interior_points(points):
@@ -748,9 +1169,6 @@ def remove_interior_points(points):
                 return True
         return False
 
-    #points_set = set(points)
-    #result = [point for point in points if not is_interior(point, points_set)]
-
     # Remove duplicates while preserving order
     seen = set()
     unique_points = []
@@ -760,11 +1178,14 @@ def remove_interior_points(points):
             seen.add(pt)
 
     points_set = set(unique_points)
-    result = [point for point in unique_points if not is_interior(point, points_set)]
-    return result
+    filtered_points = [point for point in unique_points if not is_interior(point, points_set)]
+    # Si el filtrado elimina todos los puntos, devolver los originales únicos
+    if not filtered_points:
+        return unique_points
+    return filtered_points
 
 #m:n-CAk on R functions
-def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity, wind):
+def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_vegetation, new_humidity, new_wind):
     """
     Simulates the evolution of a wildfire on a grid based on the current state of fire, vegetation, and humidity.
     Args:
@@ -782,6 +1203,9 @@ def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
             - new_vegetation (list): The updated state of the vegetation grid.
             - new_humidity (list): The updated state of the humidity grid.
     """
+
+    global D_i, D_j, DEBUG, BURNING, UNBURNED, BURNED
+
     new_LP = []
     nc = []
     vc = []
@@ -790,9 +1214,11 @@ def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
     #Getting the nucleous.
     nc = get_nc(point)
     i, j = nc
-
-    if i == 70 and j == 70:
-        a=1
+    #Start Debugging information
+    if DEBUG:
+        if i == D_i and j == D_j:
+            print(f"DEBUG - Searching for point {point} in fire layer")
+    # End Debugging information
 
     #We must acces information contained on other layers, therefore we will use combination funcion
     #In this case, the points we will use are georeferences by the same coordinates, therefore the combination functions
@@ -800,48 +1226,66 @@ def evolution_function_on_R(point,fire, vegetation, humidity, new_state, new_veg
 
     #we access to the wind layer that is on Z to obtain the wind speed at this point.
     #This is a point, therefore we can use the combination function on Z.
-    wind_speed = combination_function_on_Z(nc,wind)
+    wind_speed = combination_function_on_Z(nc,new_wind)
+
+    cell_state = combination_function_on_R(nc,fire, "state") 
 
     #Getting the vicinity, it can be defined also over the nucleous.
-    vc = get_vc_R(point, max_dim, wind_speed)
-
-    cell_state = combination_function_on_R(nc,fire) 
+    vc = get_vc_R(point, max_dim, wind_speed, cell_state)
+    #debugging information
+    if DEBUG:
+        if i == D_i and j == D_j and cell_state == BURNING:
+            print(f"DEBUG - Fire state at point {point} is {cell_state}")
+    #End debugging information
+    cell_vegetation = combination_function_on_R(nc,vegetation, "vegetation")
+    #Start Debugging information
+    #if cell_vegetation == 20:
+    #    print(f"DEBUG - Vegetation at point {point} is {cell_vegetation}")
+    # End Debugging information
     if cell_state == BURNING:
-        value_veg = combination_function_on_R(nc,vegetation)
-        if value_veg == 0:
+        if cell_vegetation <= 0:
             points = []
             points.append((i, j))
-            addVectorialMap({'id': BURNED, 'points': points},new_state)
+            if DEBUG:
+                if(i == D_i and j == D_j):
+                    print(f"DEBUG - Point {point} is burning and has no vegetation, setting to BURNED")
+            addVectorialMap({'id': BURNED, 'points': points},new_state, "state")
+            new_LP.append([i, j])
+            #new_LP.extend([elems for elems in get_vc_R(point, max_dim, wind_speed)])
+            new_LP.extend([[elems[0], elems[1]] for elems in get_vc_R(point, max_dim, wind_speed)])     
         else:
             points = []
-            value_veg -= 1
+            cell_vegetation -= 1
             points.append((i, j))
-            addVectorialMap({'id': value_veg, 'points': points},new_vegetation)
-            new_LP.append((i,j))
-            new_LP.extend([elems for elems in get_vc_R(point, max_dim, wind_speed)])
+            addVectorialMap({'id': cell_vegetation, 'points': points},new_vegetation, "vegetation")
+            new_LP.append([i, j])
+            # new_LP.extend([elems for elems in get_vc_R(point, max_dim, wind_speed)])
     elif cell_state == UNBURNED:
+        cell_humidity =  combination_function_on_R(nc,humidity, "humidity")
+        new_cell_humidity = cell_humidity
         for point_vc in vc:
             #We must acces information contained on other layers, therefore we will use combination funcion
             #In this case, the points we will use are georeferences by the same coordinates, therefore the combination functions
             #is just returning the point.
-            i_vc, j_vc = point_vc
-            cell_state = combination_function_on_R(point_vc,fire)
-            cell_humidity =  combination_function_on_R(nc,humidity)
-            cell_vegetation =  combination_function_on_R(nc,vegetation) 
-            if cell_state  == BURNING:
+            vicinity_cell_state = combination_function_on_R(point_vc,fire, "state")
+            if vicinity_cell_state  == BURNING:
                 if cell_humidity > 0:
-                    cell_humidity -= 1
+                    new_cell_humidity -= 1
                     points = []
                     points.append((i, j))
-                    addVectorialMap({'id': cell_humidity, 'points': points},new_humidity)
+                    addVectorialMap({'id': max(new_cell_humidity,0), 'points': points},new_humidity, "humidity")
+                    new_LP.append([i, j])
+                    # No añadir vicinity cuando solo se reduce humedad
                 elif cell_vegetation > 0:
                     points = []
                     points.append((i, j))
-                    addVectorialMap({'id': BURNING, 'points': points},new_state)
-                    new_LP.append((i_vc, j_vc))
-                    new_LP.extend([elems for elems in get_vc_R(point_vc, max_dim, wind_speed)])
+                    addVectorialMap({'id': BURNING, 'points': points},new_state, "state")
+                    new_LP.append([i, j])
+                    #new_LP.extend([elems for elems in get_vc_R(point, max_dim, wind_speed)])
+                    new_LP.extend([[elems[0], elems[1]] for elems in get_vc_R(point, max_dim, wind_speed)])
 
-    return new_LP,new_state, new_vegetation, new_humidity
+    return new_LP,new_state, new_vegetation, new_humidity, new_wind
+
 
 def event_scheduling_on_R():
     """
@@ -855,17 +1299,19 @@ def event_scheduling_on_R():
             - vegetationEvolution: A list of states representing the evolution of the vegetation.
             - humidityEvolution: A list of states representing the evolution of the humidity.
     """
+
+    global STATE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID, STATE_POINTS_BY_ID_FINAL, HUMIDITY_POINTS_BY_ID_FINAL, VEGETATION_POINTS_BY_ID_FINAL
+    
     folder_path = './'
     size = (100, 100)
 
     # Reading vegetation and humidity layers
+
     fileVegetation = 'vegetation.vec'
     polygonsVegetation = read_idrisi_vector_file(fileVegetation)
-    polygonsVegetation = transpose_vectorial_polygons(polygonsVegetation)
 
     fileHumidity = 'humidity.vec'
     polygonsHumidity = read_idrisi_vector_file(fileHumidity)
-    polygonsHumidity = transpose_vectorial_polygons(polygonsHumidity)
 
     # Create raster versions for compatibility
     create_idrisi_raster(polygonsVegetation, 'vegetation')
@@ -881,9 +1327,9 @@ def event_scheduling_on_R():
     wind_data = transpose_raster_matrix(wind_data)
 
     # Reading the wildfire starting point
+
     fileFire = 'fire.vec'
     polygonsFire = read_idrisi_vector_file(fileFire)
-    polygonsFire = transpose_vectorial_polygons(polygonsFire)
 
     max_dim = [100, 100]
     LP = []
@@ -891,14 +1337,16 @@ def event_scheduling_on_R():
     for polygon in polygonsFire:
         polygon_id = polygon['id']
         points = polygon['points']
-        for (x, y) in points:
-            ini_point = (x, y)
-            LP.append(ini_point)
-            LP.extend([point for point in get_vc_Z(ini_point, max_dim)])
+        if polygon_id == BURNING:
+            for (x, y) in points:
+                ini_point = (x, y)
+                LP.append(ini_point)
+                LP.extend([point for point in get_vc_Z(ini_point, max_dim)])
 
     fireEvolution = [polygonsFire]
     vegetationEvolution = [polygonsVegetation]
     humidityEvolution = [polygonsHumidity]
+    windEvolution = [wind_data]
 
     n_steps = 100
 
@@ -908,30 +1356,45 @@ def event_scheduling_on_R():
         new_state = fireEvolution[-1].copy()
         new_vegetation = vegetationEvolution[-1].copy()
         new_humidity = humidityEvolution[-1].copy()
+        new_wind = windEvolution[-1].copy()
 
         for point in LP:
-            LP_new, new_state, new_vegetation, new_humidity = evolution_function_on_R(
-                point, fireEvolution[-1], vegetationEvolution[-1], humidityEvolution[-1],
-                new_state, new_vegetation, new_humidity, wind_data
-            )
+            LP_new, new_state, new_vegetation, new_humidity, new_wind = evolution_function_on_R(point, fireEvolution[0], vegetationEvolution[0], humidityEvolution[0], new_state, new_vegetation, new_humidity, new_wind)
             [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
 
         LP = []
         [LP.append(elemento) for elemento in LP_rep if elemento not in LP]
 
-        fireEvolution.append(simplifyVectorialMap(new_state))
-        vegetationEvolution.append(simplifyVectorialMap(new_vegetation))
-        humidityEvolution.append(simplifyVectorialMap(new_humidity))
+        simplify=True
+        if simplify:
+            fireEvolution.append(simplifyVectorialMap(new_state))
+            vegetationEvolution.append(simplifyVectorialMap(new_vegetation))
+            humidityEvolution.append(simplifyVectorialMap(new_humidity))
+            windEvolution.append(new_wind)
+        else:
+            fireEvolution.append(new_state)
+            vegetationEvolution.append(new_vegetation)
+            humidityEvolution.append(new_humidity)
+            windEvolution.append(new_wind)
 
-    return fireEvolution, vegetationEvolution, humidityEvolution
+
+        import copy
+        STATE_POINTS_BY_ID_FINAL = copy.deepcopy(STATE_POINTS_BY_ID)
+        HUMIDITY_POINTS_BY_ID_FINAL = copy.deepcopy(HUMIDITY_POINTS_BY_ID)
+        VEGETATION_POINTS_BY_ID_FINAL = copy.deepcopy(VEGETATION_POINTS_BY_ID)
+
+
+        print(f"Step {_+1}/{n_steps} completed. Fire evolution size: {len(fireEvolution[-1])}, Vegetation size: {len(vegetationEvolution[-1])}, Humidity size: {len(humidityEvolution[-1])}, Wind size: {len(windEvolution[-1])}")
+
+    return fireEvolution, vegetationEvolution, humidityEvolution, windEvolution
 
 ##############################################################
 #m:n-CAk main functions
 ##############################################################
 
-def get_vc_Z(point, max_dim, wind_speed=0):
+def get_vc_Z(point, max_dim, wind_speed=0, cell_state=BURNING):
     """
-    Vicinity function. Get the valid coordinates (Moore neighbourhood) adjacent to a given point within a specified maximum dimension.
+    Vicinity function. Get the valid coordinates (Von Neumann neighbourhood) adjacent to a given point within a specified maximum dimension.
     The same for Z^2 and R^2 in this example.
     Args:
         point (tuple): A tuple (i, j) representing the coordinates of the point.
@@ -950,17 +1413,57 @@ def get_vc_Z(point, max_dim, wind_speed=0):
 
     #consider the case of wind
     wind_speed = wind_speed*1.5  # Assuming wind_speed is a multiplier for the number of steps to consider
+    # wind_speed = 0
     # Add the wind effect by extending the vicinity in the direction of the wind
-    while wind_speed > 0: 
+    if cell_state==BURNING:
         j=j+1
-        if j < max_j - 1: vc.append((i, j+1))
-        wind_speed -= 1
+        while wind_speed > 0: 
+            j=j+1
+            if j < max_j - 1: vc.append((i, j))
+            wind_speed -= 1
+    else:
+        j=j-1
+        while wind_speed > 0: 
+            j=j-1
+            if j < max_j - 1: vc.append((i, j))
+            wind_speed -= 1
 
     return vc
 
-def get_vc_R(point, max_dim, wind_speed=0):
+def increase_wind_in_vicinity(point, wind_layer, max_dim, increment=1):
     """
-    Vicinity function. Get the valid coordinates (Moore neighbourhood) adjacent to a given point within a specified maximum dimension.
+    Increases the wind values by a specified increment in the vicinity of a given point.
+    
+    Args:
+        point (tuple): A tuple (i, j) representing the coordinates of the center point.
+        wind_layer (numpy.ndarray): The wind layer matrix to be modified.
+        max_dim (tuple): A tuple (max_i, max_j) representing the maximum dimensions of the grid.
+        increment (int, optional): The value to add to each cell in the vicinity. Default is 1.
+    
+    Returns:
+        numpy.ndarray: The modified wind layer with increased values in the vicinity.
+    """
+    # Get the current wind speed at the center point for vicinity calculation
+    current_wind_speed = combination_function_on_Z(point, wind_layer)
+    
+    # Get the vicinity points using the get_vc_Z function
+    vicinity_points = get_vc_Z(point, max_dim, current_wind_speed)
+    
+    # Create a copy of the wind layer to avoid modifying the original
+    modified_wind_layer = wind_layer.copy()
+    
+    # Increase wind values in the vicinity
+    for vc_point in vicinity_points:
+        i, j = vc_point
+        # Ensure the point is within bounds (additional safety check)
+        if 0 <= i < max_dim[0] and 0 <= j < max_dim[1]:
+            modified_wind_layer[i, j] += increment
+    
+    return modified_wind_layer
+
+def get_vc_R(point, max_dim, wind_speed=0, cell_state=BURNING):
+    """
+    Vicinity function. Get the valid coordinates (Von Neumann neighbourhood) adjacent to a given point within a specified maximum dimension.
     The same for Z^2 and R^2 in this example.
     Args:
         point (tuple): A tuple (i, j) representing the coordinates of the point.
@@ -976,13 +1479,27 @@ def get_vc_R(point, max_dim, wind_speed=0):
     if i < max_i - 1: vc.append((i+1, j))
     if j > 0:  vc.append((i, j-1))
     if j < max_j - 1: vc.append((i, j+1))
+
+    if DEBUG:
+        if i == 0 and j == 0:
+            print(f"DEBUG - Adding point 0,0!")
 
     #consider the case of wind
     wind_speed = wind_speed*1.5  # Assuming wind_speed is a multiplier for the number of steps to consider
     # Add the wind effect by extending the vicinity in the direction of the wind
     # we extend j because on numpy the first coordinate is the y coordinate and the second is the x coordinate.
-    if wind_speed > 0: 
-        if i+wind_speed < max_i - 1: vc.append((i+wind_speed,j))
+    if cell_state==BURNING:
+        i=i+1
+        while wind_speed > 0: 
+            i=i+1
+            if i < max_i - 1: vc.append((i, j))
+            wind_speed -= 1
+    else:
+        i=i-1
+        while wind_speed > 0: 
+            i=i-1
+            if i < max_i - 1: vc.append((i, j))
+            wind_speed -= 1
 
     return vc
 
@@ -1014,7 +1531,7 @@ def set_nc(point, layer, value):
     layer[x, y] = value
     return point
 
-def combination_function_on_R(point, layer):
+def combination_function_on_R(point, layer, type=None):
     """
     Retrieves the value from the specified layer at the given point coordinates.
     All the layers in this example share the same coordinates, so the E function is the identity function.
@@ -1027,8 +1544,7 @@ def combination_function_on_R(point, layer):
     Returns:
         int: The ID of the polygon that contains the point.
     """
-
-    return find_polygon_id(point, layer)
+    return int(find_polygon_id(point, layer, type))
 
 def combination_function_on_Z(point, layer):
     """
@@ -1082,15 +1598,186 @@ def transpose_raster_matrix(matrix):
     return matrix.T
 
 ##############################################################
+#Report functions
+##############################################################
+
+def print_burning_cells_report(fireEvolution, domain):
+    """
+    Prints a console report showing the cells that are in BURNING state at the end of the simulation.
+    
+    Args:
+        fireEvolution (list): List of fire states from the simulation.
+        domain (str): The domain type ('Z' for raster or 'R' for vectorial).
+    """
+
+    global BURNING, BURNED, UNBURNED
+
+    print("\n" + "="*60)
+    print("FIRE SIMULATION REPORT")
+    print("="*60)
+    
+    if len(fireEvolution) == 0:
+        print("No simulation data available.")
+        return
+    
+    final_state = fireEvolution[-1]
+    print(f"Domain: {domain}")
+    print(f"Total simulation steps: {len(fireEvolution) - 1}")
+    
+    if domain == 'Z':
+        # For raster domain (Z)
+        burning_cells = []
+        burned_cells = []
+        unburned_cells = []
+        other_values = []
+        
+        rows, cols = final_state.shape
+        for i in range(rows):
+            for j in range(cols):
+                cell_value = final_state[i, j]
+                if cell_value == BURNING:
+                    burning_cells.append((i, j))
+                elif cell_value == BURNED:
+                    burned_cells.append((i, j))
+                elif cell_value == UNBURNED:
+                    unburned_cells.append((i, j))
+                else:
+                    other_values.append((i, j, cell_value))
+        
+        print(f"\nSTATE VALUES VERIFICATION:")
+        print(f"- BURNING = {BURNING} (should show as RED)")
+        print(f"- BURNED = {BURNED} (should show as BLACK)")
+        print(f"- UNBURNED = {UNBURNED} (should show as GREEN)")
+        
+        print(f"\nFINAL STATE SUMMARY:")
+        print(f"- BURNING cells: {len(burning_cells)}")
+        print(f"- BURNED cells: {len(burned_cells)}")
+        print(f"- UNBURNED cells: {len(unburned_cells)}")
+        if other_values:
+            print(f"- Cells with unexpected values: {len(other_values)}")
+        print(f"- Total cells: {rows * cols}")
+        
+        # Show some sample values around burning cells for verification
+        if burning_cells:
+            print(f"\nCELLS IN BURNING STATE:")
+            for i, (row, col) in enumerate(burning_cells):
+                actual_value = final_state[row, col]
+                print(f"  {i+1:3d}. Cell ({row:2d}, {col:2d}) = {actual_value}")
+                if i >= 4:  # Limit to first 5 for readability
+                    if len(burning_cells) > 5:
+                        print(f"  ... and {len(burning_cells) - 5} more cells")
+                    break
+        else:
+            print(f"\nNo cells are currently in BURNING state.")
+            
+        # Show unexpected values if any
+        if other_values:
+            print(f"\nCELLS WITH UNEXPECTED VALUES:")
+            for i, (row, col, value) in enumerate(other_values[:5]):
+                print(f"  {i+1:3d}. Cell ({row:2d}, {col:2d}) = {value}")
+            if len(other_values) > 5:
+                print(f"  ... and {len(other_values) - 5} more cells")
+        
+        # Sample matrix values around center for debugging
+        center_i, center_j = rows//2, cols//2
+        print(f"\nSAMPLE VALUES AROUND CENTER ({center_i}, {center_j}):")
+        for di in range(-2, 3):
+            for dj in range(-2, 3):
+                ni, nj = center_i + di, center_j + dj
+                if 0 <= ni < rows and 0 <= nj < cols:
+                    value = final_state[ni, nj]
+                    print(f"({ni:2d},{nj:2d})={value}", end="  ")
+            print()  # New line after each row
+            
+    else:
+        # For vectorial domain (R)
+        burning_polygons = []
+        burned_polygons = []
+        unburned_polygons = []
+        
+        for polygon in final_state:
+            if polygon['id'] == BURNING:
+                burning_polygons.append(polygon)
+            elif polygon['id'] == BURNED:
+                burned_polygons.append(polygon)
+            elif polygon['id'] == UNBURNED:
+                unburned_polygons.append(polygon)
+        
+        print(f"\nFINAL STATE SUMMARY:")
+        print(f"- BURNING polygons: {len(burning_polygons)}")
+        print(f"- BURNED polygons: {len(burned_polygons)}")
+        print(f"- UNBURNED polygons: {len(unburned_polygons)}")
+        print(f"- Total polygons: {len(final_state)}")
+ 
+    print("="*60 + "\n")
+
+def create_verification_map(fireEvolution, domain):
+    """
+    Creates a simple text-based verification map for debugging visualization issues.
+    
+    Args:
+        fireEvolution (list): List of fire states from the simulation.
+        domain (str): The domain type ('Z' for raster or 'R' for vectorial).
+    """
+    if domain != 'Z' or len(fireEvolution) == 0:
+        return
+        
+    final_state = fireEvolution[-1]
+    print("TEXT-BASED VERIFICATION MAP (COMPLETE 100x100 GRID):")
+    print("Legend: . = UNBURNED, X = BURNED, * = BURNING")
+    
+    rows, cols = final_state.shape
+    
+    print(f"\nShowing complete grid ({rows}x{cols}):")
+    
+    # Print column headers (every 10th column)
+    print("     ", end="")
+    for j in range(0, cols, 10):
+        print(f"{j:10d}", end="")
+    print()
+    
+    print("     ", end="")
+    for j in range(cols):
+        print(f"{j%10}", end="")
+    print()
+    
+    # Print the complete grid
+    for i in range(rows):
+        print(f"{i:3d}: ", end="")
+        for j in range(cols):
+            value = final_state[i, j]
+            if value == UNBURNED:
+                print(".", end="")
+            elif value == BURNED:
+                print("X", end="")
+            elif value == BURNING:
+                print("*", end="")
+            else:
+                print("?", end="")
+        print()  # New line after each row
+    
+    # Summary statistics
+    total_cells = rows * cols
+    burned_count = np.sum(final_state == BURNED)
+    burning_count = np.sum(final_state == BURNING)
+    unburned_count = np.sum(final_state == UNBURNED)
+    other_count = total_cells - burned_count - burning_count - unburned_count
+    
+    print(f"\nMAP SUMMARY:")
+    print(f"- Total cells: {total_cells}")
+    print(f"- BURNED (X): {burned_count} cells")
+    print(f"- BURNING (*): {burning_count} cells")
+    print(f"- UNBURNED (.): {unburned_count} cells")
+    if other_count > 0:
+        print(f"- OTHER (?): {other_count} cells")
+    
+    print("\n" + "="*60 + "\n")
+
+##############################################################
 #Main
 ##############################################################
 
 if __name__ == "__main__":
-
-    # Definition of S_fire for fire main layer.
-    UNBURNED = 2
-    BURNING = 1
-    BURNED = 0
 
     domain = 'Z'
 
@@ -1101,10 +1788,20 @@ if __name__ == "__main__":
         fireEvolution = []
         vegetationEvolution = []
         humidityEvolution = []
+        windEvolution = []
 
         if domain == 'Z':
-            fireEvolution, vegetationEvolution, humidityEvolution = event_scheduling_on_Z()
+            fireEvolution, vegetationEvolution, humidityEvolution, windEvolution = event_scheduling_on_Z()
         else:
-            fireEvolution, vegetationEvolution, humidityEvolution = event_scheduling_on_R()
+            fireEvolution, vegetationEvolution, humidityEvolution, windEvolution = event_scheduling_on_R()
 
-        results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution)
+        # Print report of burning cells at the end of simulation
+        print_burning_cells_report(fireEvolution, domain)
+        
+        # Print global structures summary
+        print_global_structures_summary()
+        
+        # Create verification map for debugging
+        create_verification_map(fireEvolution, domain)
+
+        results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution, windEvolution)
