@@ -149,7 +149,15 @@ def plot_vectorial(ax, polygons, id, radius=1, color='green', title='No title', 
     ax.clear()
     
     # Calculate the area of each polygon and sort them by area
-    polygons = sorted(polygons, key=lambda p: np.abs(np.sum([x0*y1 - x1*y0 for (x0, y0), (x1, y1) in zip(p['points'], p['points'][1:] + [p['points'][0]])])) / 2)
+    def safe_area(p):
+        pts = p.get('points', [])
+        if not isinstance(pts, list) or len(pts) < 3:
+            return 0  # Area 0 for points or lines or empty
+        try:
+            return np.abs(np.sum([x0*y1 - x1*y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + [pts[0]])])) / 2
+        except Exception:
+            return 0
+    polygons = sorted(polygons, key=safe_area)
     
     for polygon in polygons:
         polygon_id = polygon['id']
@@ -393,7 +401,10 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
         if use_domain == 'Z':
             plot_raster(ax, layerEvolution[frame], id=0, type=layer_type, color='red', title=f'State at Frame {frame}')
         else:
-            plot_vectorial(ax, layerEvolution[frame], id=0, radius=1, color='red', title=f'State at Frame {frame}')
+            if layer_type == "wind":
+                plot_raster(ax, layerEvolution[frame], id=0, type=layer_type, color='red', title=f'State at Frame {frame}')
+            else:
+                plot_vectorial(ax, layerEvolution[frame], id=0, radius=1, color='red', title=f'State at Frame {frame}')
         # Forzar actualización completa del canvas
         canvas.flush_events()
         canvas.draw_idle()
@@ -1110,7 +1121,7 @@ def sort_points(points):
     # Ordena primero por ángulo, luego por distancia al centroide (para desempatar)
     return sorted(points, key=angle_and_distance)
     
-def simplifyVectorialMap(vectorialMap):
+def simplify_vectorial_map(vectorialMap):
     """
     Simplifies a vectorial map by merging polygons with the same ID using union operations.
 
@@ -1391,7 +1402,6 @@ def event_scheduling_on_R():
     #wind_img_path = os.path.join(folder_path, 'no_wind.img')
 
     wind_data = read_idrisi_raster_file(wind_img_path)
-    wind_data = transpose_raster_matrix(wind_data)
 
     # Reading the wildfire starting point
 
@@ -1434,9 +1444,9 @@ def event_scheduling_on_R():
 
         simplify=True
         if simplify:
-            fireEvolution.append(simplifyVectorialMap(new_state))
-            vegetationEvolution.append(simplifyVectorialMap(new_vegetation))
-            humidityEvolution.append(simplifyVectorialMap(new_humidity))
+            fireEvolution.append(simplify_vectorial_map(new_state))
+            vegetationEvolution.append(simplify_vectorial_map(new_vegetation))
+            humidityEvolution.append(simplify_vectorial_map(new_humidity))
             windEvolution.append(new_wind)
         else:
             fireEvolution.append(new_state)
