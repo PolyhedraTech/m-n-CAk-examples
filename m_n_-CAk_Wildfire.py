@@ -196,7 +196,7 @@ def plot_vectorial(ax, polygons, id, radius=1, color='green', title='No title', 
     plt.title(f'Layer {id} - '+title)
     plt.grid(True)
 
-def plot_raster(ax, matrix, id, color='green', title='No title'):
+def plot_raster(ax, matrix, id, type="fire", color='green', title='No title'):
     """
     Plots a matrix using matplotlib on a given axis.
 
@@ -207,42 +207,102 @@ def plot_raster(ax, matrix, id, color='green', title='No title'):
         color (str): The color to use for highlighting the ID.
         title (str): The title of the plot.
     """
-    ax.clear()  # Clear the axis to prepare for the new frame
-  
-    # Define the color scale with explicit mapping
-    # BURNED = 0 -> black, BURNING = 1 -> red, UNBURNED = 2 -> green
-    cmap = plt.cm.colors.ListedColormap(['black', 'red', 'green', 'blue'])
-    bounds = [0, 1, 2, 3, 4]
-    norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
-  
-    # Get unique values for debugging
+
+    # Limpiar el eje y eliminar leyendas y títulos previos
+    ax.clear()
+    # Eliminar leyenda previa si existe
+    if ax.get_legend() is not None:
+        ax.get_legend().remove()
+    # Eliminar título previo (set a string vacío)
+    ax.set_title("")
+
+    # Definir el color y la normalización según el tipo
+    from matplotlib.patches import Patch
+    if type == "fire":
+        cmap = plt.cm.colors.ListedColormap(['black', 'red', 'green'])
+        bounds = [0, 1, 2, 3]
+        norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
+    elif type == "vegetation":
+        cmap = plt.cm.colors.ListedColormap(['black', (0.5, 1, 0.5), (0, 0.5, 0), (0, 1, 0)])
+        bounds = [0, 1, 2, 3, 21]
+        norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
+    elif type == "humidity":
+        cmap = plt.cm.colors.ListedColormap(['black', (0,0,0.5), (0,0,0.7)])
+        bounds = [0, 1, 2, 3]
+        norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
+    elif type == "wind":
+        cmap = plt.cm.colors.ListedColormap(['black', (0,0.5,0.5), (0,0.5,0.7), (0,0.5,1)])
+        bounds = [0, 1, 2, 3, 21]
+        norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
+    else:
+        cmap = plt.cm.viridis
+        norm = None
+
+    # Debug de valores únicos
     unique_values = np.unique(matrix)
     print(f"DEBUG - Unique values in matrix: {unique_values}")
-    
-    # Count each state
+
+    # Contar estados
     burned_count = np.sum(matrix == 0)
-    burning_count = np.sum(matrix == 1) 
+    burning_count = np.sum(matrix == 1)
     unburned_count = np.sum(matrix == 2)
-    print(f"DEBUG - Counts: BURNED={burned_count}, BURNING={burning_count}, UNBURNED={unburned_count}")
-  
+    if type == "fire":
+        print(f"DEBUG - Counts: BURNED={burned_count}, BURNING={burning_count}, UNBURNED={unburned_count}")
+    elif type == "vegetation":
+        print(f"DEBUG - Counts: DEAD={burned_count}, ALIVE={unburned_count}")
+    elif type == "humidity":
+        print(f"DEBUG - Counts: DRY={burned_count}, HUMID={unburned_count}")
+    elif type == "wind":
+        print(f"DEBUG - Counts: CALM={burned_count}, STRONG={unburned_count}")
+
+    # Mostrar la matriz
     cax = ax.imshow(matrix, cmap=cmap, norm=norm, interpolation='nearest')
-    
-    # Add title and labels with additional info
-    ax.set_title(f'Layer {id} - {title}\n(Black=BURNED, Red=BURNING, Green=UNBURNED)')
-    ax.set_xlabel('X Coordinate')
-    ax.set_ylabel('Y Coordinate')
-    
-    # Invert the y-axis to have 0 at the bottom
+
+    # Título y etiquetas
+    if type == "fire":
+        ax.set_title(f'Layer {id} - {title}\n(Black=BURNED, Red=BURNING, Green=UNBURNED)')
+        ax.set_xlabel('X Coordinate')
+        ax.set_ylabel('Y Coordinate')
+        legend_elements = [
+            Patch(facecolor='black', label=f'BURNED ({burned_count})'),
+            Patch(facecolor='red', label=f'BURNING ({burning_count})'),
+            Patch(facecolor='green', label=f'UNBURNED ({unburned_count})')
+        ]
+    elif type == "vegetation":
+        ax.set_title(f'Layer {id} - {title}\n(Black=DEAD, Green=ALIVE)')
+        ax.set_xlabel('X Coordinate')
+        ax.set_ylabel('Y Coordinate')
+        legend_elements = [
+            Patch(facecolor='black', label=f'DEAD ({burned_count})'),
+            Patch(facecolor='green', label=f'ALIVE ({unburned_count})')
+        ]
+    elif type == "humidity":
+        ax.set_title(f'Layer {id} - {title}\n(Blue=HUMID, Yellow=DRY)')
+        ax.set_xlabel('X Coordinate')
+        ax.set_ylabel('Y Coordinate')
+        legend_elements = [
+            Patch(facecolor='black', label=f'DRY ({burned_count})'),
+            Patch(facecolor='blue', label=f'HUMID ({unburned_count})')
+        ]
+    elif type == "wind":
+        ax.set_title(f'Layer {id} - {title}\n(Purple=CALM, Red=STRONG)')
+        ax.set_xlabel('X Coordinate')
+        ax.set_ylabel('Y Coordinate')
+        legend_elements = [
+            Patch(facecolor='blue', label=f'CALM ({burned_count})'),
+            Patch(facecolor='darkblue', label=f'STRONG ({unburned_count})')
+        ]
+    else:
+        ax.set_title(f'Layer {id} - {title}')
+        legend_elements = []
+
+    # Invertir el eje y para que 0 esté abajo
     ax.invert_yaxis()
-    
-    # Add a simple legend
-    from matplotlib.patches import Patch
-    legend_elements = [
-        Patch(facecolor='black', label=f'BURNED ({burned_count})'),
-        Patch(facecolor='red', label=f'BURNING ({burning_count})'),
-        Patch(facecolor='green', label=f'UNBURNED ({unburned_count})')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.15, 1))
+
+    # Añadir la leyenda solo si corresponde
+    if legend_elements:
+        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.15, 1))
+
 
 def create_idrisi_raster(polygons, output_filename):
     """
@@ -328,20 +388,23 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
  
     # Slider for selecting the matrix
-    def on_slider_change(val, layerEvolution, use_domain=domain):
+    def on_slider_change(val, layerEvolution, layer_type, use_domain=domain):
         frame = int(float(val))
         if use_domain == 'Z':
-            plot_raster(ax, layerEvolution[frame], id=0, color='red', title=f'State at Frame {frame}')
+            plot_raster(ax, layerEvolution[frame], id=0, type=layer_type, color='red', title=f'State at Frame {frame}')
         else:
             plot_vectorial(ax, layerEvolution[frame], id=0, radius=1, color='red', title=f'State at Frame {frame}')
-        canvas.draw()
+        # Forzar actualización completa del canvas
+        canvas.flush_events()
+        canvas.draw_idle()
 
     # Label to display the current value of the slider
     slider_label = tk.Label(root, text="Steeps")
     slider_label.pack(side=tk.BOTTOM, pady=5)
 
     # Slider for selecting the matrix
-    slider = ttk.Scale(root, from_=0, to=len(fireEvolution) - 1, orient=tk.HORIZONTAL, command=lambda val: on_slider_change(val, fireEvolution))
+    # Inicialmente para fire
+    slider = ttk.Scale(root, from_=0, to=len(fireEvolution) - 1, orient=tk.HORIZONTAL, command=lambda val: on_slider_change(val, fireEvolution, "fire"))
     slider.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
      
     button_frame = ttk.Frame(root)
@@ -349,41 +412,45 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
 
     # Buttons to change the layerEvolution
     def set_fire_evolution():
-        slider.config(command=lambda val: on_slider_change(val, fireEvolution))
+        slider.config(command=lambda val: on_slider_change(val, fireEvolution, "fire"))
         slider_label.config(text="Fire")
         if domain == 'Z':
-            plot_raster(ax, fireEvolution[0], id=0, color='red', title='Fire - Initial State')
+            plot_raster(ax, fireEvolution[0], id=0, type="fire", color='red', title='Fire - Initial State')
         else:
             plot_vectorial(ax, fireEvolution[0], id=0, radius=1, color='red', title='Fire - Initial State')
         slider.set(0)  # Reset slider to the beginning
-        canvas.draw()
+        canvas.flush_events()
+        canvas.draw_idle()
 
     def set_vegetation_evolution():
-        slider.config(command=lambda val: on_slider_change(val, vegetationEvolution))
+        slider.config(command=lambda val: on_slider_change(val, vegetationEvolution, "vegetation"))
         slider_label.config(text="Vegetation")
         if domain == 'Z':
-            plot_raster(ax, vegetationEvolution[0], id=0, color='green', title='Vegetation - Initial State')
+            plot_raster(ax, vegetationEvolution[0], id=0, type="vegetation", color='green', title='Vegetation - Initial State')
         else: 
             plot_vectorial(ax, vegetationEvolution[0], id=0, radius=1, color='green', title='Vegetation - Initial State')
         slider.set(0)  # Reset slider to the beginning
-        canvas.draw()
+        canvas.flush_events()
+        canvas.draw_idle()
         
     def set_humidity_evolution():
-        slider.config(command=lambda val: on_slider_change(val, humidityEvolution))
+        slider.config(command=lambda val: on_slider_change(val, humidityEvolution, "humidity"))
         slider_label.config(text="Humidity")
         if domain == 'Z':
-            plot_raster(ax, humidityEvolution[0], id=0, color='blue', title='Humidity - Initial State')
+            plot_raster(ax, humidityEvolution[0], id=0, type="humidity", color='blue', title='Humidity - Initial State')
         else:
             plot_vectorial(ax, humidityEvolution[0], id=0, radius=1, color='blue', title='Humidity - Initial State')
         slider.set(0)  # Reset slider to the beginning
-        canvas.draw()
+        canvas.flush_events()
+        canvas.draw_idle()
 
     def set_wind_evolution():
-        slider.config(command=lambda val: on_slider_change(val, windEvolution, "Z"))
+        slider.config(command=lambda val: on_slider_change(val, windEvolution, "wind"))
         slider_label.config(text="Wind")
-        plot_raster(ax, windEvolution[0], id=0, color='purple', title='Wind - Initial State')
+        plot_raster(ax, windEvolution[0], id=0, type="wind", color='purple', title='Wind - Initial State')
         slider.set(0)  # Reset slider to the beginning
-        canvas.draw()
+        canvas.flush_events()
+        canvas.draw_idle()
 
     # Variable to keep track of the selected option
     selected_option = tk.StringVar(value="Fire")
@@ -783,11 +850,11 @@ def add_points_to_global_structure(points_to_add, target_id, type):
     else:
         raise ValueError(f"Tipo de capa no válido: {type}. Debe ser 'state', 'humidity' o 'vegetation'")
     
-    # Crear la entrada si no existe
+    # Add the entry if it does not exists
     if target_id not in points_by_id:
         points_by_id[target_id] = []
     
-    # Añadir cada punto si no existe ya en este ID
+    # Add each point if it does not already exist in this ID
     for point_to_add in points_to_add:
         if not any(are_points_equal(existing_pt, point_to_add, dist=0) for existing_pt in points_by_id[target_id]):
             if DEBUG:
@@ -1649,6 +1716,7 @@ def print_burning_cells_report(fireEvolution, domain):
         print(f"- BURNED = {BURNED} (should show as BLACK)")
         print(f"- UNBURNED = {UNBURNED} (should show as GREEN)")
         
+
         print(f"\nFINAL STATE SUMMARY:")
         print(f"- BURNING cells: {len(burning_cells)}")
         print(f"- BURNED cells: {len(burned_cells)}")
@@ -1676,7 +1744,7 @@ def print_burning_cells_report(fireEvolution, domain):
             for i, (row, col, value) in enumerate(other_values[:5]):
                 print(f"  {i+1:3d}. Cell ({row:2d}, {col:2d}) = {value}")
             if len(other_values) > 5:
-                print(f"  ... and {len(other_values) - 5} more cells")
+                print(f"  ... and {len(other_values) - 5} more")
         
         # Sample matrix values around center for debugging
         center_i, center_j = rows//2, cols//2
