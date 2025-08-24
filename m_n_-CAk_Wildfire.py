@@ -26,14 +26,14 @@ from shapely.ops import unary_union
 # Model execution parameters
 ##############################################################
 
-WIND_MULT = 1  # Multiplier for wind speed
+WIND_MULT = 1.5  # Multiplier for wind speed
 
-STEEPS = 100 #Number of simulation steps
+STEEPS = 25  # Number of simulation steps
 
 wind_as_main_layer = True  # Set to True to use wind as the main layer, retrofeedback can appear due to the execution of the two functions.
 
 # Experimental feature, set to True to enable simplification on the representations of the polygons on the vectorial case.
-plot_polygons = True # This allows to represent only the perimeter of the polygons.
+plot_polygons = False # This allows to represent only the perimeter of the polygons.
 
 #DEBUG Variables
 DEBUG = False  # Set to True to enable debugging output
@@ -1198,7 +1198,7 @@ def get_point_id_from_global_structure(point, type):
     # Buscar el punto en la estructura global
     for id_key, points_list in points_by_id.items():
         for existing_point in points_list:
-            if are_points_equal(point, existing_point, dist=0):
+            if are_points_equal(point, existing_point, dist=0.5):
                 return id_key
     
     # Si no se encuentra el punto, devolver None
@@ -1435,7 +1435,7 @@ def simplify_vectorial_map(vectorialMap, type):
     import numpy as np
     from shapely.geometry import Polygon, Point, LineString
     from shapely.ops import unary_union
-    # Step 1: For each ID, group polygons that are close to each other (within tolerance, intersecting, or containing one another)
+    # Step 1: For each ID, group polygons that are close to each other (within tolerance, or intersecting, or containing one another)
     # and merge them into a single polygon to create a more compact region. This reduces redundancy and simplifies the map.
     # (Polygons in the same group will be unified if they are adjacent, overlapping, or have points within the tolerance distance.)
     tolerance = 1.5
@@ -1617,6 +1617,11 @@ def evolution_function_on_R(point,fire, vegetation, humidity, wind, new_state, n
     #Now the layer contains no wind, therefore, no effect.
     #However, one can define a layer with a wind field, static, to see its effect over the fire propagation.
 
+    #Mira si el punt te alguna component deciman
+    if (isinstance(i, float) and not i.is_integer()) or (isinstance(j, float) and not j.is_integer()):
+        # Aquí entra si i o j tienen parte decimal
+        a = 1
+
     wind_speed = combination_function_on_R(nc,new_wind,"wind")
 
     cell_fire = combination_function_on_R(nc,fire,"fire") 
@@ -1656,7 +1661,7 @@ def evolution_function_on_R(point,fire, vegetation, humidity, wind, new_state, n
         new_cell_humidity = cell_humidity
         for point_vc in vc:
             #We must acces information contained on other layers, therefore we will use combination funcion
-            #In this case, the points we will use are georeferences by the same coordinates, therefore the combination functions
+            #In this case, the points we will use are georeferenciated by the same coordinates, therefore the combination functions
             #is just returning the point.
             vicinity_cell_state = combination_function_on_R(point_vc,fire, "fire")
             if vicinity_cell_state  == BURNING:
@@ -1759,7 +1764,7 @@ def event_scheduling_on_R():
             for (x, y) in points:
                 ini_point = (x, y)
                 LP.append(ini_point)
-                LP.extend([point for point in get_vc_fire_Z(ini_point, max_dim)])
+                LP.extend([point for point in get_vc_fire_R(ini_point, max_dim)])
 
     if wind_as_main_layer:
         # Reading the wind starting point
@@ -1862,18 +1867,17 @@ def get_vc_fire_Z(point, max_dim, wind_speed=0, cell_state=BURNING):
     #consider the case of wind
     wind_speed = wind_speed*WIND_MULT  # Assuming wind_speed is a multiplier for the number of steps to consider
     # Add the wind effect by extending the vicinity in the direction of the wind
-    jj = j
     if cell_state==BURNING:
-        jj = j+1
+        j = j+1
         while wind_speed > 0: 
-            jj += 1
-            if 0 <= jj < max_j: vc.append((i, jj))
+            j += 1
+            if 0 <= j < max_j: vc.append((i, j))
             wind_speed -= 1
     else:
-        jj = j-1
+        j = j-1
         while wind_speed > 0: 
-            jj -= 1
-            if 0 <= jj < max_j: vc.append((i, jj))
+            j -= 1
+            if 0 <= j < max_j: vc.append((i, j))
             wind_speed -= 1
 
     return vc
@@ -1934,6 +1938,7 @@ def get_vc_fire_R(point, max_dim, wind_speed=0, cell_state=BURNING):
     # Add the wind effect by extending the vicinity in the direction of the wind
     # we extend j because on numpy the first coordinate is the y coordinate and the second is the x coordinate.
     if cell_state==BURNING:
+        '''
         i=i+1
         while wind_speed > 0: 
             i=i+1
@@ -1945,7 +1950,14 @@ def get_vc_fire_R(point, max_dim, wind_speed=0, cell_state=BURNING):
             i=i-1
             if i < max_i - 1: vc.append((i, j))
             wind_speed -= 1
-
+        '''
+        if wind_speed>0:
+            i=i+wind_speed
+            if i < max_i - 1: vc.append((i, j))
+    else:
+        if wind_speed>0:
+            i=i-wind_speed
+            if i < max_i - 1: vc.append((i, j))
     return vc
 
 def get_nc(point):
