@@ -28,12 +28,12 @@ from shapely.ops import unary_union
 
 WIND_MULT = 1.5  # Multiplier for wind speed
 
-STEEPS = 25  # Number of simulation steps
+STEEPS = 100  # Number of simulation steps
 
 wind_as_main_layer = True  # Set to True to use wind as the main layer, retrofeedback can appear due to the execution of the two functions.
 
 # Experimental feature, set to True to enable simplification on the representations of the polygons on the vectorial case.
-plot_polygons = False # This allows to represent only the perimeter of the polygons.
+plot_polygons = True # This allows to represent only the perimeter of the polygons.
 
 #DEBUG Variables
 DEBUG = False  # Set to True to enable debugging output
@@ -1087,6 +1087,7 @@ def addVectorialMap(vectorialMap, layersArray, type):
     """
     global D_i, D_j, DEBUG
     
+    #NOT USED
     def remove_points_from_layers_array(points_to_remove, layersArray):
         """
         Auxiliary function that removes a list of points only from layersArray.
@@ -1236,7 +1237,7 @@ def get_point_id_from_global_structure_temp(point, type):
     # Si no se encuentra el punto, devolver None
     return None
 
-
+# NOT USED
 def print_points_by_id_debug(type=None):
     """
     Debug function to print the structures of points by ID.
@@ -1489,6 +1490,9 @@ def simplify_vectorial_map(vectorialMap, type):
                 simplified_vectorial_map.append({'id': poly_id, 'points': ordered_points})
     return simplified_vectorial_map
 
+# NOt USED
+# THis version tries to improve the existing verion to detect if a point is interior ina  polygon.
+# Experimetnl feature.
 def is_interior_point(point, points_set, type, poly_id, dist=1):
     """
     Determines if a point is interior:
@@ -1938,19 +1942,6 @@ def get_vc_fire_R(point, max_dim, wind_speed=0, cell_state=BURNING):
     # Add the wind effect by extending the vicinity in the direction of the wind
     # we extend j because on numpy the first coordinate is the y coordinate and the second is the x coordinate.
     if cell_state==BURNING:
-        '''
-        i=i+1
-        while wind_speed > 0: 
-            i=i+1
-            if i < max_i - 1: vc.append((i, j))
-            wind_speed -= 1
-    else:
-        i=i-1
-        while wind_speed > 0: 
-            i=i-1
-            if i < max_i - 1: vc.append((i, j))
-            wind_speed -= 1
-        '''
         if wind_speed>0:
             i=i+wind_speed
             if i < max_i - 1: vc.append((i, j))
@@ -2030,6 +2021,7 @@ def combination_function_on_Z(point, layer):
     return layer[i,j]
     #return point
 
+# NOT USED
 def transpose_vectorial_polygons(polygons):
     """
     Transposes the coordinates of all points in all polygons from (x, y) to (y, x).
@@ -2268,6 +2260,7 @@ if __name__ == "__main__":
         results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution, windEvolution)
 
 # =============================================================
+# NOT USED
 # Generador de vectorial map a partir de FIRE_POINTS_BY_ID_FINAL
 # =============================================================
 def generate_vectorial_map_from_fire_points_by_id_final(dist=1):
