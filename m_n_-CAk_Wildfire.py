@@ -1746,18 +1746,20 @@ def event_scheduling_on_R():
     create_idrisi_raster(polygonsHumidity, 'humidity')
     create_idrisi_raster(polygonsWind, 'wind')
 
-    # Wind layer (raster)
+    # Wind layer (raster version)
+    # Note: The wind layer is currently not used in this vector-based simulation. If you wish to use a raster file for wind,
+    # simply load the appropriate file here. However, if switching to a raster wind layer, you must also update the vicinity
+    # and nucleous functions to handle the discrete grid case (Z) instead of vector polygons (R).
     wind_doc_path = os.path.join(folder_path, 'wind.doc')
     wind_img_path = os.path.join(folder_path, 'wind.img')
-    # Uncomment this if you don't want wind (validation purposes)
+    # If you want to disable wind for validation purposes when working with raster files, uncomment the following line.
     wind_img_path = os.path.join(folder_path, 'no_wind.img')
 
+    # In the example presented in the paper, wind is modeled as a vectorial (continuous) layer. 
+    # This is where the wind data is loaded for use in the simulation.
     wind_data = read_idrisi_raster_file(wind_img_path)
 
     # Reading the wildfire starting point
-
-
-
     max_dim = [100, 100]
     LP = []
 
