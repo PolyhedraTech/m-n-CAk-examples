@@ -53,21 +53,60 @@ BURNED = 0
 CALM = 0
 WIND = 1
 
-# Global structures to organize points by ID and layer type.
-# These structures are needed because on the continuous case there is no method
-# to directly access the points, since they are infinite,
-# therefore, we store the points that canges, causing a cmodification on the event list
-# and causing the time evolution.
-
-FIRE_POINTS_BY_ID = {}      # {'0': [(x1,y1), (x2,y2), ...], '1': [...], '2': [...]}
-HUMIDITY_POINTS_BY_ID = {}   # {'id1': [(x1,y1), ...], 'id2': [...], ...}
-VEGETATION_POINTS_BY_ID = {} # {'id1': [(x1,y1), ...], 'id2': [...], ...}
-WIND_POINTS_BY_ID = {}      # {'id1': [(x1,y1), ...], 'id2': [...], ...}
-
-FIRE_POINTS_BY_ID_FINAL = {}      # {'0': [(x1,y1), (x2,y2), ...], '1': [...], '2': [...]}
-HUMIDITY_POINTS_BY_ID_FINAL = {}   # {'id1': [(x1,y1), ...], 'id2': [...], ...}
-VEGETATION_POINTS_BY_ID_FINAL = {} # {'id1': [(x1,y1), ...], 'id2': [...], ...}
-WIND_POINTS_BY_ID_FINAL = {}      # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+##############################################################
+# SimulationState class to encapsulate point structures
+##############################################################
+class SimulationState:
+    """
+    Encapsulates the simulation state.
+    Organizes nucleus (points in this example) by ID and layer type for the continuous case.
+    """
+    def __init__(self):
+        # Working structures for the current step
+        self.fire_points_by_id = {}      # {'0': [(x1,y1), (x2,y2), ...], '1': [...], '2': [...]}
+        self.humidity_points_by_id = {}   # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+        self.vegetation_points_by_id = {} # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+        self.wind_points_by_id = {}      # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+        
+        # Final structures for the completed step
+        self.fire_points_by_id_final = {}      # {'0': [(x1,y1), (x2,y2), ...], '1': [...], '2': [...]}
+        self.humidity_points_by_id_final = {}   # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+        self.vegetation_points_by_id_final = {} # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+        self.wind_points_by_id_final = {}      # {'id1': [(x1,y1), ...], 'id2': [...], ...}
+    
+    def get_points_by_id(self, layer_type):
+        """Get the working points dictionary for a given layer type."""
+        if layer_type == "fire":
+            return self.fire_points_by_id
+        elif layer_type == "humidity":
+            return self.humidity_points_by_id
+        elif layer_type == "vegetation":
+            return self.vegetation_points_by_id
+        elif layer_type == "wind":
+            return self.wind_points_by_id
+        else:
+            raise ValueError(f"Invalid layer type: {layer_type}")
+    
+    def get_points_by_id_final(self, layer_type):
+        """Get the final points dictionary for a given layer type."""
+        if layer_type == "fire":
+            return self.fire_points_by_id_final
+        elif layer_type == "humidity":
+            return self.humidity_points_by_id_final
+        elif layer_type == "vegetation":
+            return self.vegetation_points_by_id_final
+        elif layer_type == "wind":
+            return self.wind_points_by_id_final
+        else:
+            raise ValueError(f"Invalid layer type: {layer_type}")
+    
+    def finalize_step(self):
+        """Copy working structures to final structures."""
+        import copy
+        self.fire_points_by_id_final = copy.deepcopy(self.fire_points_by_id)
+        self.humidity_points_by_id_final = copy.deepcopy(self.humidity_points_by_id)
+        self.vegetation_points_by_id_final = copy.deepcopy(self.vegetation_points_by_id)
+        self.wind_points_by_id_final = copy.deepcopy(self.wind_points_by_id)
 
 
 ##############################################################
@@ -271,9 +310,9 @@ def plot_vectorial_dots(ax, polygons, id, radius=1, type='fire', title='No title
         colors = {1: 'green', 0: 'black', 2: 'white'}
     elif type=="humidity":
         legend_elements = [
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=8, label='HUMIDITY')
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='lightcyan', markersize=8, label='HUMIDITY')
         ]
-        colors = {1: 'blue', 0: 'black', 2: 'white'}
+        colors = {1: 'lightcyan', 0: 'black', 2: 'white'}
     elif type=="wind":
         legend_elements = [
             Line2D([0], [0], marker='o', color='w', markerfacecolor='white', markersize=8, label='CALM'),
@@ -298,7 +337,7 @@ def plot_vectorial_dots(ax, polygons, id, radius=1, type='fire', title='No title
     for pid, pts in grouped_points.items():
         if pts:
             xs, ys = zip(*pts)
-            c = colors.get(pid, "darkblue")
+            c = colors.get(pid, "lightsteelblue")
             ax.scatter(xs, ys, s=point_size, color=c, label=f'ID {pid}')
     ax.set_aspect('equal', adjustable='box')
     ax.set_xlabel('X Coordinate')
@@ -314,14 +353,15 @@ def plot_vectorial(ax, polygons, id, type="fire", radius=1, title='No title', ex
         # plot_continuous_dots(ax, id, type, radius=radius, color=color, title=title, exclusive_plot=exclusive_plot)
         plot_vectorial_dots(ax, polygons, id, radius=radius, type=type, title=title, exclusive_plot=exclusive_plot)
 
-def plot_continuous_dots(ax, id, type="fire", radius=1, color='fire', title='No title', exclusive_plot=[]):
+def plot_continuous_dots(ax, id, sim_state, type="fire", radius=1, color='fire', title='No title', exclusive_plot=[]):
     """
-    Dibuja los puntos de una estructura global *_POINTS_BY_ID_FINAL en un scatter plot, agrupando por color según el ID.
-    Elige el diccionario global según el argumento 'type'.
+    Dibuja los puntos de una estructura *_POINTS_BY_ID_FINAL en un scatter plot, agrupando por color según el ID.
+    Elige el diccionario según el argumento 'type' desde sim_state.
     Args:
         ax (matplotlib.axes.Axes): El axis de matplotlib donde dibujar.
         id (int): Identificador de la capa actual (solo para título).
-        type (str): Tipo de capa ('state', 'humidity', 'vegetation', 'wind').
+        sim_state (SimulationState): The simulation state object
+        type (str): Tipo de capa ('fire', 'humidity', 'vegetation', 'wind').
         radius (float, opcional): Ignorado, solo para compatibilidad.
         color (str, opcional): Color por defecto si no se usa el ID.
         title (str, opcional): Título del gráfico.
@@ -336,18 +376,8 @@ def plot_continuous_dots(ax, id, type="fire", radius=1, color='fire', title='No 
     ]
     colors = {1: 'red', 0: 'black', 2: 'green'}
     grouped_points = {1: [], 0: [], 2: [], 'other': []}
-    # Seleccionar el diccionario global según el tipo
-    global FIRE_POINTS_BY_ID_FINAL, HUMIDITY_POINTS_BY_ID_FINAL, VEGETATION_POINTS_BY_ID_FINAL, WIND_POINTS_BY_ID_FINAL
-    if type == "fire":
-        points_by_id_final = FIRE_POINTS_BY_ID_FINAL
-    elif type == "humidity":
-        points_by_id_final = HUMIDITY_POINTS_BY_ID_FINAL
-    elif type == "vegetation":
-        points_by_id_final = VEGETATION_POINTS_BY_ID_FINAL
-    elif type == "wind":
-        points_by_id_final = WIND_POINTS_BY_ID_FINAL
-    else:
-        raise ValueError(f"Tipo de capa no válido: {type}. Debe ser 'state', 'humidity', 'vegetation' o 'wind'")
+    # Get the corresponding structure from sim_state according to the type
+    points_by_id_final = sim_state.get_points_by_id_final(type)
     # Agrupar puntos por ID
     for id_key, points in points_by_id_final.items():
         if exclusive_plot is not None and len(exclusive_plot) > 0:
@@ -403,7 +433,7 @@ def plot_raster(ax, matrix, id, type="fire", color='green', title='No title'):
         bounds = [0, 1, 2, 3, 21]
         norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
     elif type == "humidity":
-        cmap = plt.cm.colors.ListedColormap(['black', (0,0,0.5), (0,0,0.7)])
+        cmap = plt.cm.colors.ListedColormap(['black', 'lightblue', 'lightcyan'])
         bounds = [0, 1, 2, 3]
         norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
     elif type == "wind":
@@ -453,12 +483,12 @@ def plot_raster(ax, matrix, id, type="fire", color='green', title='No title'):
             Patch(facecolor='green', label=f'ALIVE ({two_count})')
         ]
     elif type == "humidity":
-        ax.set_title(f'Layer {id} - {title}\n(Blue=HUMID, Yellow=DRY)')
+        ax.set_title(f'Layer {id} - {title}\n(Light Blue=HUMID, Yellow=DRY)')
         ax.set_xlabel('X Coordinate')
         ax.set_ylabel('Y Coordinate')
         legend_elements = [
             Patch(facecolor='black', label=f'DRY ({zero_count})'),
-            Patch(facecolor='blue', label=f'HUMID ({two_count})')
+            Patch(facecolor='lightcyan', label=f'HUMID ({two_count})')
         ]
     elif type == "wind":
         ax.set_title(f'Layer {id} - {title}\n(Light Blue=CALM, Dark Blue=WIND)')
@@ -627,7 +657,7 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
         slider.config(command=lambda val: on_slider_change(val, humidityEvolution, "humidity"))
         slider_label.config(text="Humidity")
         if domain == 'Z':
-            plot_raster(ax, humidityEvolution[0], id=0, type="humidity", color='blue', title='Humidity - Initial State')
+            plot_raster(ax, humidityEvolution[0], id=0, type="humidity", color='lightcyan', title='Humidity - Initial State')
         else:
             plot_vectorial(ax, humidityEvolution[0], id=0, type="humidity", radius=1, title='Humidity - Initial State')
         slider.set(0)
@@ -905,7 +935,7 @@ def is_point_in_polygon(point, polygon_points):
     # Check if the polygon contains the point
     return polygon.intersects(Point(point))
 
-def find_polygon_id(point, polygons, type=None):
+def find_polygon_id(point, polygons, type=None, sim_state=None):
     """
     Finds the ID of the smallest polygon that contains a given point.
     Args:
@@ -913,6 +943,8 @@ def find_polygon_id(point, polygons, type=None):
         polygons (list): A list of dictionaries, where each dictionary represents a polygon with the keys:
             - 'id' (any): The identifier of the polygon.
             - 'points' (list): A list of tuples representing the vertices of the polygon.
+        type (str): The type of layer for searching in simulation state.
+        sim_state (SimulationState): The simulation state object.
     Returns:
         any: The ID of the smallest polygon that contains the point. If no polygon contains the point, returns None.
     """
@@ -931,16 +963,16 @@ def find_polygon_id(point, polygons, type=None):
     current_polygon_id = float('inf')
     current_area = float('inf')
     
-    # Check if the point is in the global structure identified by type
+    # Check if the point is in the simulation state identified by type
     polygon_id_dictionary = None
-    if type is not None:
-        polygon_id_dictionary = get_point_id_from_global_structure(point, type)
+    if type is not None and sim_state is not None:
+        polygon_id_dictionary = get_point_id_from_global_structure(point, type, sim_state)
 
-    # If the point is in the global structure, return the ID directly
+    # If the point is in the simulation state, return the ID directly
     if polygon_id_dictionary is not None:
         return polygon_id_dictionary
     else:
-        # If the point is not in the global structure, proceed to check polygons
+        # If the point is not in the simulation state, proceed to check polygons
         for polygon in polygons:
             if is_point_in_polygon(point, polygon['points']):
                 if len(polygon['points']) == 1: #if the poligon is a point
@@ -963,30 +995,22 @@ def find_polygon_id(point, polygons, type=None):
             return -1
         return smallest_polygon_id
 
-def remove_points_from_global_structure(points_to_remove, type):
+def remove_points_from_global_structure(points_to_remove, type, sim_state):
     """
-    Removes a list of points from the entire global structure of the specified type.
+    Removes a list of points from the simulation state structure of the specified type.
     Searches for each point in points_to_remove across all IDs and removes them.
     
     Args:
         points_to_remove (list): List of points (tuples) to remove
-        type (str): Type of global structure ("fire", "humidity", "vegetation", "wind")
+        type (str): Type of structure ("fire", "humidity", "vegetation", "wind")
+        sim_state (SimulationState): The simulation state object
     Returns:
         None
     """
-    global DEBUG, D_i, D_j, FIRE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID
+    global DEBUG, D_i, D_j
     
-    # Select the corresponding global structure according to the type
-    if type == "fire":
-        points_by_id = FIRE_POINTS_BY_ID
-    elif type == "humidity":
-        points_by_id = HUMIDITY_POINTS_BY_ID
-    elif type == "vegetation":
-        points_by_id = VEGETATION_POINTS_BY_ID
-    elif type == "wind":
-        points_by_id = WIND_POINTS_BY_ID
-    else:
-        raise ValueError(f"Tipo de capa no válido: {type}. Debe ser 'state', 'humidity' o 'vegetation'")
+    # Get the corresponding structure according to the type
+    points_by_id = sim_state.get_points_by_id(type)
     
     # Convert points_to_remove to a set for more efficient search
     points_to_remove_set = set(points_to_remove)
@@ -1010,30 +1034,22 @@ def remove_points_from_global_structure(points_to_remove, type):
     for id_key in ids_to_remove:
         del points_by_id[id_key]
 
-def add_points_to_global_structure(points_to_add, target_id, type):
+def add_points_to_global_structure(points_to_add, target_id, type, sim_state):
     """
-    Adds a list of points to the specified ID in the global dictionary, avoiding duplicates.
+    Adds a list of points to the specified ID in the simulation state, avoiding duplicates.
     
     Args:
         points_to_add (list): List of points (tuples) to add
         target_id (str): ID to which the points will be added
-        type (str): Type of global structure ("fire", "humidity", "vegetation", "wind")
+        type (str): Type of structure ("fire", "humidity", "vegetation", "wind")
+        sim_state (SimulationState): The simulation state object
     Returns:
         None
     """
-    global DEBUG, D_i, D_j, FIRE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID, WIND_POINTS_BY_ID
+    global DEBUG, D_i, D_j
 
-    # Select the corresponding global structure according to the type
-    if type == "fire":
-        points_by_id = FIRE_POINTS_BY_ID
-    elif type == "humidity":
-        points_by_id = HUMIDITY_POINTS_BY_ID
-    elif type == "vegetation":
-        points_by_id = VEGETATION_POINTS_BY_ID
-    elif type == "wind":
-        points_by_id = WIND_POINTS_BY_ID
-    else:
-        raise ValueError(f"Tipo de capa no válido: {type}. Debe ser 'state', 'humidity' o 'vegetation'")
+    # Get the corresponding structure according to the type
+    points_by_id = sim_state.get_points_by_id(type)
     
     # Add the entry if it does not exist
     if target_id not in points_by_id:
@@ -1069,12 +1085,12 @@ def are_points_equal(point1, point2, dist=0):
         distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         return distance <= dist
 
-def addVectorialMap(vectorialMap, layersArray, type):
+def addVectorialMap(vectorialMap, layersArray, type, sim_state):
     """
-    Adds a vectorial map to the layers array and maintains global point structures by ID and type.
+    Adds a vectorial map to the layers array and maintains point structures by ID and type.
     
     This function:
-    1. Manages four global dictionaries (FIRE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID, WIND_POINTS_BY_ID)
+    1. Manages four simulation state dictionaries (fire, humidity, vegetation, wind)
     2. Ensures each point exists in only one ID per type
     3. Removes duplicate points from other IDs when adding new ones
     
@@ -1082,6 +1098,7 @@ def addVectorialMap(vectorialMap, layersArray, type):
         vectorialMap (dict or list): A dictionary with 'id' and 'points' keys, or a list of such dictionaries
         layersArray (list): A list of vectorial maps for the layer
         type (str): The type of layer ("fire", "humidity", "vegetation", "wind")
+        sim_state (SimulationState): The simulation state object
     Returns:
         None
     """
@@ -1146,10 +1163,10 @@ def addVectorialMap(vectorialMap, layersArray, type):
             #remove_points_from_layers_array(new_points, layersArray)
 
             # 1. Eliminar estos puntos de cualquier ID en la estructura global
-            remove_points_from_global_structure(new_points, type)
+            remove_points_from_global_structure(new_points, type, sim_state)
             
             # 2. Añadir los puntos al ID correspondiente
-            add_points_to_global_structure(new_points, new_id, type)
+            add_points_to_global_structure(new_points, new_id, type, sim_state)
 
     # Add vectorialMap to layersArray if it does not already exist
     if vectorialMap not in layersArray:
@@ -1173,113 +1190,96 @@ def addVectorialMap(vectorialMap, layersArray, type):
             add_points_to_global_structure(new_points, new_id, type)
     '''
 
-def get_point_id_from_global_structure(point, type):
+def get_point_id_from_global_structure(point, type, sim_state):
     """
-    Searches for a point in the global structure and returns its ID if found.
+    Searches for a point in the simulation state and returns its ID if found.
     
     Args:
         point (tuple): Point (x, y) to search for
-        type (str): Type of global structure ("fire", "humidity", "vegetation", "wind")
+        type (str): Type of structure ("fire", "humidity", "vegetation", "wind")
+        sim_state (SimulationState): The simulation state object
     Returns:
         str or None: The ID of the point if found, None if not found
     """
-    global FIRE_POINTS_BY_ID_FINAL, HUMIDITY_POINTS_BY_ID_FINAL, VEGETATION_POINTS_BY_ID_FINAL, WIND_POINTS_BY_ID_FINAL
+    points_by_id = sim_state.get_points_by_id_final(type)
 
-    if type == "fire":
-        points_by_id = FIRE_POINTS_BY_ID_FINAL
-    elif type == "humidity":
-        points_by_id = HUMIDITY_POINTS_BY_ID_FINAL
-    elif type == "vegetation":
-        points_by_id = VEGETATION_POINTS_BY_ID_FINAL
-    elif type == "wind":
-        points_by_id = WIND_POINTS_BY_ID_FINAL
-    else:
-        raise ValueError(f"Tipo de capa no válido: {type}. Debe ser 'state', 'humidity', 'vegetation' o 'wind'")
-
-    # Buscar el punto en la estructura global
+    # Search for the point in the structure
     for id_key, points_list in points_by_id.items():
         for existing_point in points_list:
             if are_points_equal(point, existing_point, dist=0.5):
                 return id_key
     
-    # Si no se encuentra el punto, devolver None
+    # If point not found, return None
     return None
 
-def get_point_id_from_global_structure_temp(point, type):
+def get_point_id_from_global_structure_temp(point, type, sim_state):
     """
-    Searches for a point in the temporary global structure and returns its ID if found.
+    Searches for a point in the temporary simulation state and returns its ID if found.
     
     Args:
         point (tuple): Point (x, y) to search for
-        type (str): Type of global structure ("fire", "humidity", "vegetation", "wind")
+        type (str): Type of structure ("fire", "humidity", "vegetation", "wind")
+        sim_state (SimulationState): The simulation state object
     Returns:
         str or None: The ID of the point if found, None if not found
     """
-    global FIRE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID, WIND_POINTS_BY_ID
+    points_by_id = sim_state.get_points_by_id(type)
 
-    if type == "fire":
-        points_by_id = FIRE_POINTS_BY_ID
-    elif type == "humidity":
-        points_by_id = HUMIDITY_POINTS_BY_ID
-    elif type == "vegetation":
-        points_by_id = VEGETATION_POINTS_BY_ID
-    elif type == "wind":
-        points_by_id = WIND_POINTS_BY_ID
-    else:
-        raise ValueError(f"Tipo de capa no válido: {type}. Debe ser 'state', 'humidity', 'vegetation' o 'wind'")
-
-    # Buscar el punto en la estructura global
+    # Search for the point in the structure
     for id_key, points_list in points_by_id.items():
         for existing_point in points_list:
             if are_points_equal(point, existing_point, dist=0):
                 return id_key
     
-    # Si no se encuentra el punto, devolver None
+    # If point not found, return None
     return None
 
 # NOT USED
-def print_points_by_id_debug(type=None):
+def print_points_by_id_debug(sim_state, type=None):
     """
     Debug function to print the structures of points by ID.
     
     Args:
+        sim_state (SimulationState): The simulation state object
         type (str, optional): Specific type to display. If None, shows all.
     """
-    global FIRE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID
     
     if type is None or type == "fire":
-        print(f"FIRE_POINTS_BY_ID: {FIRE_POINTS_BY_ID}")
+        print(f"FIRE_POINTS_BY_ID: {sim_state.get_points_by_id('fire')}")
     if type is None or type == "humidity":
-        print(f"HUMIDITY_POINTS_BY_ID: {HUMIDITY_POINTS_BY_ID}")
+        print(f"HUMIDITY_POINTS_BY_ID: {sim_state.get_points_by_id('humidity')}")
     if type is None or type == "vegetation":
-        print(f"VEGETATION_POINTS_BY_ID: {VEGETATION_POINTS_BY_ID}")
+        print(f"VEGETATION_POINTS_BY_ID: {sim_state.get_points_by_id('vegetation')}")
     if type is None or type == "wind":
-        print(f"WIND_POINTS_BY_ID: {WIND_POINTS_BY_ID}")
+        print(f"WIND_POINTS_BY_ID: {sim_state.get_points_by_id('wind')}")
 
-def print_global_structures_summary():
+def print_global_structures_summary(sim_state):
     """
-    Prints a summary of the global structures of points by ID.
+    Prints a summary of the simulation state structures of points by ID.
     Shows statistics about the distribution of points by type and ID.
+    
+    Args:
+        sim_state (SimulationState): The simulation state object
     """
-    global FIRE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID, WIND_POINTS_BY_ID
 
     print("\n" + "="*60)
-    print("SUMMARY OF GLOBAL STRUCTURES OF POINTS BY ID")
+    print("SUMMARY OF SIMULATION STATE STRUCTURES OF POINTS BY ID")
     print("="*60)
     
-    # Statistics for STATE
-    print(f"\nSTATE POINTS BY ID:")
-    total_state_points = 0
-    for id_key, points in FIRE_POINTS_BY_ID.items():
+    # Statistics for FIRE
+    print(f"\nFIRE POINTS BY ID:")
+    total_fire_points = 0
+    fire_points_by_id = sim_state.get_points_by_id("fire")
+    for id_key, points in fire_points_by_id.items():
         count = len(points)
-        total_state_points += count
+        total_fire_points += count
         print(f"  ID {id_key}: {count} points")
-    print(f"  TOTAL: {total_state_points} points")
+    print(f"  TOTAL: {total_fire_points} points")
     
     # Show points in BURNING state (ID 1)
-    if '1' in FIRE_POINTS_BY_ID and len(FIRE_POINTS_BY_ID['1']) > 0:
+    if '1' in fire_points_by_id and len(fire_points_by_id['1']) > 0:
         print(f"\n  POINTS IN BURNING STATE (ID 1):")
-        burned_points = FIRE_POINTS_BY_ID['1']
+        burned_points = fire_points_by_id['1']
         if len(burned_points) <= 2000:  # If there are few points, show all
             for i, point in enumerate(burned_points):
                 print(f"    {i+1:2d}. {point}")
@@ -1291,7 +1291,8 @@ def print_global_structures_summary():
     # Statistics for HUMIDITY
     print(f"\nHUMIDITY POINTS BY ID:")
     total_humidity_points = 0
-    for id_key, points in HUMIDITY_POINTS_BY_ID.items():
+    humidity_points_by_id = sim_state.get_points_by_id("humidity")
+    for id_key, points in humidity_points_by_id.items():
         count = len(points)
         total_humidity_points += count
         print(f"  ID {id_key}: {count} points")
@@ -1300,7 +1301,8 @@ def print_global_structures_summary():
     # Statistics for VEGETATION
     print(f"\nVEGETATION POINTS BY ID:")
     total_vegetation_points = 0
-    for id_key, points in VEGETATION_POINTS_BY_ID.items():
+    vegetation_points_by_id = sim_state.get_points_by_id("vegetation")
+    for id_key, points in vegetation_points_by_id.items():
         count = len(points)
         total_vegetation_points += count
         print(f"  ID {id_key}: {count} points")
@@ -1309,7 +1311,8 @@ def print_global_structures_summary():
     # Statistics for WIND
     print(f"\nWIND POINTS BY ID:")
     total_wind_points = 0
-    for id_key, points in WIND_POINTS_BY_ID.items():
+    wind_points_by_id = sim_state.get_points_by_id("wind")
+    for id_key, points in wind_points_by_id.items():
         count = len(points)
         total_wind_points += count
         print(f"  ID {id_key}: {count} points")
@@ -1493,7 +1496,7 @@ def simplify_vectorial_map(vectorialMap, type):
 # NOt USED
 # THis version tries to improve the existing verion to detect if a point is interior ina  polygon.
 # Experimetnl feature.
-def is_interior_point(point, points_set, type, poly_id, dist=1):
+def is_interior_point(point, points_set, type, poly_id, sim_state, dist=1):
     """
     Determines if a point is interior:
     1. First, uses the classic criterion (neighbors above, below, left, right in points_set).
@@ -1503,6 +1506,7 @@ def is_interior_point(point, points_set, type, poly_id, dist=1):
         points_set (set): Set of points for the classic criterion.
         type (str): Layer type ('fire', 'humidity', 'vegetation', 'wind').
         poly_id: Polygon ID (optional, if known, avoids search).
+        sim_state (SimulationState): The simulation state object
         dist (float): Distance for cardinal neighbors.
     Returns:
         bool: True if the point is interior, False otherwise.
@@ -1527,7 +1531,7 @@ def is_interior_point(point, points_set, type, poly_id, dist=1):
     directions = [(dist, 0), (-dist, 0), (0, dist), (0, -dist)]
     for dx, dy in directions:
         neighbor = (x + dx, y + dy)
-        neighbor_id = get_point_id_from_global_structure_temp(neighbor, type)
+        neighbor_id = get_point_id_from_global_structure_temp(neighbor, type, sim_state)
         if neighbor_id is None or float(neighbor_id) != float(poly_id):
             return False
     return True
@@ -1576,7 +1580,7 @@ def remove_interior_points(points, type, poly_id):
     return filtered_points
 
 #m:n-CAk on R functions
-def evolution_function_on_R(point,fire, vegetation, humidity, wind, new_state, new_vegetation, new_humidity, new_wind):
+def evolution_function_on_R(point,fire, vegetation, humidity, wind, new_state, new_vegetation, new_humidity, new_wind, sim_state):
     """
     Simulates the evolution of a wildfire on a grid based on the current state of fire, vegetation, and humidity.
     Args:
@@ -1587,6 +1591,7 @@ def evolution_function_on_R(point,fire, vegetation, humidity, wind, new_state, n
         new_state (list): The updated state of the fire grid.
         new_vegetation (list): The updated state of the vegetation grid.
         new_humidity (list): The updated state of the humidity grid.
+        sim_state (SimulationState): The simulation state object
     Returns:
         tuple: A tuple containing:
             - new_LP (list): List of points that have been updated.
@@ -1626,9 +1631,9 @@ def evolution_function_on_R(point,fire, vegetation, humidity, wind, new_state, n
         # Aquí entra si i o j tienen parte decimal
         a = 1
 
-    wind_speed = combination_function_on_R(nc,new_wind,"wind")
+    wind_speed = combination_function_on_R(nc,new_wind,"wind", sim_state)
 
-    cell_fire = combination_function_on_R(nc,fire,"fire") 
+    cell_fire = combination_function_on_R(nc,fire,"fire", sim_state) 
 
     #Getting the vicinity, it can be defined also over the nucleous.
     vc = get_vc_fire_R(point, max_dim, wind_speed, cell_fire)
@@ -1637,7 +1642,7 @@ def evolution_function_on_R(point,fire, vegetation, humidity, wind, new_state, n
         if i == D_i and j == D_j and cell_fire == BURNING:
             print(f"DEBUG - Fire state at point {point} is {cell_fire}")
     #End debugging information
-    cell_vegetation = combination_function_on_R(nc,vegetation, "vegetation")
+    cell_vegetation = combination_function_on_R(nc,vegetation, "vegetation", sim_state)
     #Start Debugging information
     #if cell_vegetation == 20:
     #    print(f"DEBUG - Vegetation at point {point} is {cell_vegetation}")
@@ -1649,7 +1654,7 @@ def evolution_function_on_R(point,fire, vegetation, humidity, wind, new_state, n
             if DEBUG:
                 if(i == D_i and j == D_j):
                     print(f"DEBUG - Point {point} is burning and has no vegetation, setting to BURNED")
-            addVectorialMap({'id': BURNED, 'points': points},new_state, "fire")
+            addVectorialMap({'id': BURNED, 'points': points},new_state, "fire", sim_state)
             new_LP.append([i, j])
             #new_LP.extend([elems for elems in get_vc_R(point, max_dim, wind_speed)])
             new_LP.extend([[elems[0], elems[1]] for elems in get_vc_fire_R(point, max_dim, wind_speed)])     
@@ -1657,53 +1662,53 @@ def evolution_function_on_R(point,fire, vegetation, humidity, wind, new_state, n
             points = []
             cell_vegetation -= 1
             points.append((i, j))
-            addVectorialMap({'id': cell_vegetation, 'points': points},new_vegetation, "vegetation")
+            addVectorialMap({'id': cell_vegetation, 'points': points},new_vegetation, "vegetation", sim_state)
             new_LP.append([i, j])
             # new_LP.extend([elems for elems in get_vc_R(point, max_dim, wind_speed)])
     elif cell_fire == UNBURNED:
-        cell_humidity =  combination_function_on_R(nc,humidity, "humidity")
+        cell_humidity =  combination_function_on_R(nc,humidity, "humidity", sim_state)
         new_cell_humidity = cell_humidity
         for point_vc in vc:
             #We must acces information contained on other layers, therefore we will use combination funcion
             #In this case, the points we will use are georeferenciated by the same coordinates, therefore the combination functions
             #is just returning the point.
-            vicinity_cell_state = combination_function_on_R(point_vc,fire, "fire")
+            vicinity_cell_state = combination_function_on_R(point_vc,fire, "fire", sim_state)
             if vicinity_cell_state  == BURNING:
                 if cell_humidity > 0:
                     new_cell_humidity -= 1
                     points = []
                     points.append((i, j))
-                    addVectorialMap({'id': max(new_cell_humidity,0), 'points': points},new_humidity, "humidity")
+                    addVectorialMap({'id': max(new_cell_humidity,0), 'points': points},new_humidity, "humidity", sim_state)
                     new_LP.append([i, j])
                     # No añadir vicinity cuando solo se reduce humedad
                 elif cell_vegetation > 0:
                     points = []
                     points.append((i, j))
-                    addVectorialMap({'id': BURNING, 'points': points},new_state, "fire")
+                    addVectorialMap({'id': BURNING, 'points': points},new_state, "fire", sim_state)
                     new_LP.append([i, j])
                     #new_LP.extend([elems for elems in get_vc_R(point, max_dim, wind_speed)])
                     new_LP.extend([[elems[0], elems[1]] for elems in get_vc_fire_R(point, max_dim, wind_speed, cell_fire)])
               
     if wind_as_main_layer:
         #Evolution function for wind layer
-        cell_wind = combination_function_on_R(nc, wind, "wind")
+        cell_wind = combination_function_on_R(nc, wind, "wind", sim_state)
         #Getting the vicinity.
         vc = get_vc_wind(point, max_dim)
         # cell_fire = combination_function_on_Z(nc,fire)
 
         if cell_wind == CALM:
             for point_vc in vc:
-                vicinity_cell_wind = combination_function_on_R(point_vc,wind,"wind")
+                vicinity_cell_wind = combination_function_on_R(point_vc,wind,"wind", sim_state)
                 if vicinity_cell_wind == WIND:
                     points = []
                     points.append((i, j))
-                    addVectorialMap({'id': WIND, 'points': points},new_wind, "wind")
+                    addVectorialMap({'id': WIND, 'points': points},new_wind, "wind", sim_state)
                     new_LP.append([i, j])
                     new_LP.extend([[elems[0], elems[1]] for elems in get_vc_wind(point, max_dim)])
                     break
         else: #wind is not CALM
             if cell_fire == BURNING:
-                    addVectorialMap({'id': cell_wind+1, 'points': points},new_wind, "wind")
+                    addVectorialMap({'id': cell_wind+1, 'points': points},new_wind, "wind", sim_state)
 
     return new_LP,new_state, new_vegetation, new_humidity, new_wind
 
@@ -1721,13 +1726,12 @@ def event_scheduling_on_R():
             - humidityEvolution: A list of states representing the evolution of the humidity.
     """
 
-    global STEEPS, plot_polygons, FIRE_POINTS_BY_ID, HUMIDITY_POINTS_BY_ID, VEGETATION_POINTS_BY_ID, WIND_POINTS_BY_ID, FIRE_POINTS_BY_ID_FINAL, HUMIDITY_POINTS_BY_ID_FINAL, VEGETATION_POINTS_BY_ID_FINAL, WIND_POINTS_BY_ID_FINAL
+    global STEEPS, plot_polygons
     
     folder_path = './'
     size = (100, 100)
 
     # Reading vegetation and humidity layers
-
     fileFire = 'fire.vec'
     polygonsFire = read_idrisi_vector_file(fileFire)
     
@@ -1739,6 +1743,38 @@ def event_scheduling_on_R():
 
     fileWind = 'wind.vec'
     polygonsWind = read_idrisi_vector_file(fileWind)
+    
+    # Create simulation state object to replace global structures
+    sim_state = SimulationState()
+    
+    # Initialize simulation state with initial polygon data
+    for polygon in polygonsFire:
+        polygon_id = str(polygon['id'])
+        points = polygon['points']
+        if polygon_id not in sim_state.fire_points_by_id:
+            sim_state.fire_points_by_id[polygon_id] = []
+        sim_state.fire_points_by_id[polygon_id].extend(points)
+    
+    for polygon in polygonsVegetation:
+        polygon_id = str(polygon['id'])
+        points = polygon['points']
+        if polygon_id not in sim_state.vegetation_points_by_id:
+            sim_state.vegetation_points_by_id[polygon_id] = []
+        sim_state.vegetation_points_by_id[polygon_id].extend(points)
+    
+    for polygon in polygonsHumidity:
+        polygon_id = str(polygon['id'])
+        points = polygon['points']
+        if polygon_id not in sim_state.humidity_points_by_id:
+            sim_state.humidity_points_by_id[polygon_id] = []
+        sim_state.humidity_points_by_id[polygon_id].extend(points)
+    
+    for polygon in polygonsWind:
+        polygon_id = str(polygon['id'])
+        points = polygon['points']
+        if polygon_id not in sim_state.wind_points_by_id:
+            sim_state.wind_points_by_id[polygon_id] = []
+        sim_state.wind_points_by_id[polygon_id].extend(points)
     
     # Create raster versions for compatibility
     create_idrisi_raster(polygonsFire, 'fire')
@@ -1817,7 +1853,7 @@ def event_scheduling_on_R():
         new_wind = wind_evolution[-1].copy()
 
         for point in LP:
-            LP_new, new_state, new_vegetation, new_humidity, new_wind = evolution_function_on_R(point, fire_evolution[0], vegetation_evolution[0], humidity_evolution[0], wind_evolution[0], new_state, new_vegetation, new_humidity, new_wind)
+            LP_new, new_state, new_vegetation, new_humidity, new_wind = evolution_function_on_R(point, fire_evolution[0], vegetation_evolution[0], humidity_evolution[0], wind_evolution[0], new_state, new_vegetation, new_humidity, new_wind, sim_state)
             [LP_rep.append(elemento) for elemento in LP_new if elemento not in LP_rep]
 
         LP = []
@@ -1835,11 +1871,8 @@ def event_scheduling_on_R():
             wind_evolution.append(new_wind)
 
 
-        import copy
-        FIRE_POINTS_BY_ID_FINAL = copy.deepcopy(FIRE_POINTS_BY_ID)
-        HUMIDITY_POINTS_BY_ID_FINAL = copy.deepcopy(HUMIDITY_POINTS_BY_ID)
-        VEGETATION_POINTS_BY_ID_FINAL = copy.deepcopy(VEGETATION_POINTS_BY_ID)
-        WIND_POINTS_BY_ID_FINAL = copy.deepcopy(WIND_POINTS_BY_ID)
+        # Finalize the step by copying working structures to final
+        sim_state.finalize_step()
 
         print(f"Step {_+1}/{n_steps} completed. Fire evolution size: {len(fire_evolution[-1])}, Vegetation size: {len(vegetation_evolution[-1])}, Humidity size: {len(humidity_evolution[-1])}, Wind size: {len(wind_evolution[-1])}")
 
@@ -1981,7 +2014,7 @@ def set_nc(point, layer, value):
     layer[x, y] = value
     return point
 
-def combination_function_on_R(point, layer, type=None):
+def combination_function_on_R(point, layer, type=None, sim_state=None):
     """
     Retrieves the value from the specified layer at the given point coordinates.
     All the layers in this example share the same coordinates, so the E function is the identity function.
@@ -1991,10 +2024,12 @@ def combination_function_on_R(point, layer, type=None):
     Args:
         point (tuple): A tuple representing the coordinates of the point (e.g., (x, y)).
         layer (object): The layer object containing polygon data.
+        type (str): The type of layer ("fire", "humidity", "vegetation", "wind").
+        sim_state (SimulationState): The simulation state object.
     Returns:
         int: The ID of the polygon that contains the point.
     """
-    return int(find_polygon_id(point, layer, type))
+    return int(find_polygon_id(point, layer, type, sim_state))
 
 def combination_function_on_Z(point, layer):
     """
@@ -2252,8 +2287,8 @@ if __name__ == "__main__":
 
         print_burning_cells_report(windEvolution, domain)
         
-        # Print global structures summary
-        print_global_structures_summary()
+        # Print simulation state summary (commented out - would need sim_state object)
+        # print_global_structures_summary(sim_state)
         
         # Create verification map for debugging
         create_verification_map(fireEvolution, domain)
@@ -2265,20 +2300,21 @@ if __name__ == "__main__":
 # NOT USED
 # Generador de vectorial map a partir de FIRE_POINTS_BY_ID_FINAL
 # =============================================================
-def generate_vectorial_map_from_fire_points_by_id_final(dist=1):
+def generate_vectorial_map_from_fire_points_by_id_final(sim_state, dist=1):
     """
-    Genera un vectorial map (lista de dicts con 'id' y 'points') a partir de FIRE_POINTS_BY_ID_FINAL.
+    Genera un vectorial map (lista de dicts con 'id' y 'points') a partir de fire points by id final.
     Para cada ID, toma los puntos y genera el polígono más externo que engloba esos puntos,
     asegurando que los puntos consecutivos estén a distancia <= dist para evitar englobar partes cóncavas no conectadas.
     Args:
+        sim_state (SimulationState): The simulation state object
         dist (float): distancia máxima entre puntos consecutivos en el contorno (default=1)
     Returns:
         vectorial_map (list): lista de dicts {'id': id, 'points': [p1, p2, ...]}
     """
     import numpy as np
-    global FIRE_POINTS_BY_ID_FINAL
+    fire_points_by_id_final = sim_state.get_points_by_id_final("fire")
     vectorial_map = []
-    for poly_id, points in FIRE_POINTS_BY_ID_FINAL.items():
+    for poly_id, points in fire_points_by_id_final.items():
         # Eliminar duplicados
         unique_points = []
         seen = set()
@@ -2292,7 +2328,7 @@ def generate_vectorial_map_from_fire_points_by_id_final(dist=1):
             continue
         # Eliminar puntos interiores
         points_set = set(unique_points)
-        filtered_points = [pt for pt in unique_points if not is_interior_point(pt, points_set, 'state', poly_id, dist=dist)]
+        filtered_points = [pt for pt in unique_points if not is_interior_point(pt, points_set, 'state', poly_id, sim_state, dist=dist)]
         if not filtered_points:
             filtered_points = unique_points
         # Ordenar los puntos para formar el contorno externo, asegurando conectividad
