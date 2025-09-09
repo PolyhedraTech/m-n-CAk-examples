@@ -309,9 +309,9 @@ def plot_vectorial_dots(ax, polygons, id, radius=1, type='fire', title='No title
         colors = {1: 'green', 0: 'black', 2: 'white'}
     elif type=="humidity":
         legend_elements = [
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='lightcyan', markersize=8, label='HUMIDITY')
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='darkblue', markersize=8, label='HUMIDITY')
         ]
-        colors = {1: 'lightcyan', 0: 'black', 2: 'white'}
+        colors = {1: 'lightblue', 0: 'black', 2: 'darkblue'}
     elif type=="wind":
         legend_elements = [
             Line2D([0], [0], marker='o', color='w', markerfacecolor='white', markersize=8, label='CALM'),
@@ -432,7 +432,7 @@ def plot_raster(ax, matrix, id, type="fire", color='green', title='No title'):
         bounds = [0, 1, 2, 3, 21]
         norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
     elif type == "humidity":
-        cmap = plt.cm.colors.ListedColormap(['black', 'lightblue', 'lightcyan'])
+        cmap = plt.cm.colors.ListedColormap(['black', 'lightblue', 'darkblue'])
         bounds = [0, 1, 2, 3]
         norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
     elif type == "wind":
@@ -487,7 +487,7 @@ def plot_raster(ax, matrix, id, type="fire", color='green', title='No title'):
         ax.set_ylabel('Y Coordinate')
         legend_elements = [
             Patch(facecolor='black', label=f'DRY ({zero_count})'),
-            Patch(facecolor='lightcyan', label=f'HUMID ({two_count})')
+            Patch(facecolor='darkblue', label=f'HUMID ({two_count})')
         ]
     elif type == "wind":
         ax.set_title(f'Layer {id} - {title}\n(Light Blue=CALM, Dark Blue=WIND)')
@@ -656,7 +656,7 @@ def results_window(domain, fireEvolution, vegetationEvolution, humidityEvolution
         slider.config(command=lambda val: on_slider_change(val, humidityEvolution, "humidity"))
         slider_label.config(text="Humidity")
         if domain == 'Z':
-            plot_raster(ax, humidityEvolution[0], id=0, type="humidity", color='lightcyan', title='Humidity - Initial State')
+            plot_raster(ax, humidityEvolution[0], id=0, type="humidity", color='darkblue', title='Humidity - Initial State')
         else:
             plot_vectorial(ax, humidityEvolution[0], id=0, type="humidity", radius=1, title='Humidity - Initial State')
         slider.set(0)
